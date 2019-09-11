@@ -1,16 +1,34 @@
+/// This module simple contains the header structure as well as parsing code.
+/// The usage is as follows: 
+/// ```rust
+/// # use requests::headers::*;
+/// let example_string = "Connection: close";
+/// let as_enum: Result<Header, _> = example_string.parse();
+///
+/// assert_eq!(
+///     as_enum.unwrap(),
+///     Header::Connection(ConnectionOption::Close)
+/// );
+/// ```
+
+///The enum that contains each possible header the server can receive.
 #[derive(Debug, PartialEq)]
 pub enum Header {
+    ///The connection status after this request.
     Connection(ConnectionOption)
 }
 
+///An enum that contains the available options for modifiying a connection.
 #[derive(Debug, PartialEq)]
 pub enum ConnectionOption {
+    ///Close the connection.
     Close
 }
 
 use std::str::FromStr;
 use std::error::Error;
 
+///An error received when a supplied header is not implemented/unknown.
 #[derive(Debug)]
 pub struct UnknownHeaderError {}
 
@@ -47,6 +65,7 @@ impl FromStr for Header {
     }
 }
 
+///An error that occurs when an option given for the 'Connection' header is unknown.
 #[derive(Debug)]
 pub struct UnknownConnectionOption;
 
