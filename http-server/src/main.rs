@@ -2,6 +2,7 @@ use std::net::{TcpListener, TcpStream};
 use log::*;
 
 mod config;
+mod webserver;
 
 lazy_static::lazy_static! {
     pub static ref CONFIG: config::Config = {
@@ -43,13 +44,6 @@ fn parse_request(stream: &mut TcpStream) -> io::Result<String> {
 }
 
 fn handle_request(stream: &mut TcpStream, mut req: String) -> io::Result<()> {
-    let resp = "HTTP/1.1 404 Not Found
-Date: Wed, 11 Sep 2019 10:36:20 GMT
-Server: MyServer
-Content-Length: 0
-Connection: Closed
-Content-Type: text/html; charset=iso-8859-1";
-
     stream.write(resp.as_bytes())?;
     stream.flush()?;
 
