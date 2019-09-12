@@ -3,6 +3,8 @@ FROM rust:latest
 ENV listen_port 80
 ENV server_home /home/echo-server
 
+EXPOSE ${listen_port}
+
 WORKDIR ${server_home}
 
 RUN mkdir -p ${server_home}
