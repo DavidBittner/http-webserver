@@ -1,16 +1,14 @@
 FROM rust:latest
 
 ENV listen_port 80
-EXPOSE 8080:${listen_port}/tcp
-
 ENV server_home /home/echo-server
 
 WORKDIR ${server_home}
 
 RUN mkdir -p ${server_home}
 
-COPY src ${server_home}/src
-COPY Cargo.toml ${server_home}/
+COPY echo-server/src ${server_home}/src
+COPY echo-server/Cargo.toml ${server_home}/
 
 RUN cd ${server_home}
 RUN cargo build --release
