@@ -33,7 +33,7 @@ lazy_static::lazy_static! {
 
 fn main() -> io::Result<()> {
     pretty_env_logger::init();
-    let mut server = WebServer::new(&CONFIG)?;
+    let mut server = WebServer::new()?;
     server.listen()?;
 
     Ok(())

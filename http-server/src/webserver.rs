@@ -1,67 +1,94 @@
-use crate::config::Config;
+mod socket_handler;
+
+use crate::CONFIG;
+use std::sync::mpsc::channel;
 use std::net::{TcpListener, TcpStream, SocketAddr};
+use std::time::Duration;
+use std::collections::HashMap;
 use std::io;
+use std::io::Write;
 
 use log::*;
 
-pub struct WebServer<'a> {
-    config: &'a Config,
+use socket_handler::SocketHandler;
+
+pub struct WebServer {
     listener: TcpListener
 }
 
-impl<'a> WebServer<'a> {
-    pub fn new(config: &'a Config) -> io::Result<Self> {
+impl WebServer {
+    pub fn new() -> io::Result<Self> {
         info!("creating new webserver...");
         let addr = format!(
             "{}:{}",
-            config.addr,
-            config.port
+            CONFIG.addr,
+            CONFIG.port
         );
 
         let listener = TcpListener::bind(&addr)?;
         info!("bound to addr '{}' successfully", addr);
 
+        listener.set_nonblocking(true)?;
         Ok(WebServer{
-            config: config,
             listener: listener
         })
     }
 
     pub fn listen(&mut self) -> io::Result<()> {
-        info!("listening on addr '{}'...", self.listener.local_addr()?);
+        let mut conn_map = HashMap::new();
+        let (tx, rx)     = channel();
 
         loop {
+            io::stdout().flush()?;
             match self.listener.accept() {
-                Ok(client) => {
-                    self.handle_stream(client)?;
+                Ok((stream, addr)) => {
+                    trace!("new connection received: '{}'", addr);
+
+                    let handler = SocketHandler::new(
+                        stream
+                    )?;
+
+                    let other_tx = tx.clone();
+                    let handle = std::thread::spawn(move || {
+                        let res = handler.dispatch();
+                        other_tx.send(addr)
+                            .expect("failed to send addr");
+
+                        res
+                    });
+
+                    conn_map.insert(addr, handle);
                 },
                 Err(err) => {
-                    error!("error accepting connection from client: '{}'", err);
+                    use io::ErrorKind;
+
+                    match err.kind() {
+                        ErrorKind::WouldBlock => (),
+                        _ => error!(
+                            "error occured while accepting connection: '{}'",
+                            err
+                        ),
+                    }
                 }
             }
+
+            let del = rx.recv_timeout(Duration::from_millis(10));
+            match del {
+                Ok(addr) => {
+                    let thread = conn_map.remove(&addr)
+                        .expect("attempted to unwrap a connection that did not exist");
+
+                    match thread.join() {
+                        Err(err) => {
+                            error!("thread did not terminate without errors: '{:?}'", err);
+                        }
+                        _ => ()
+                    }
+
+                    trace!("connection '{}' terminated successfully", addr);
+                },
+                Err(_) => continue
+            }
         }
-    }
-
-    fn handle_stream(&self, (mut stream, addr): (TcpStream, SocketAddr)) -> io::Result<()> {
-        info!("new connection from client: '{}'", addr);
-        let req = self.parse_request(&mut stream)?;
-        let res = self.create_response(&mut stream, req)?;
-
-        //stream.write(res);
-
-        Ok(())
-    }
-
-    fn parse_request(&self, stream: &mut TcpStream) -> io::Result<()> {
-        match stream.peer_addr() {
-            Ok(addr) => trace!("parsing request from: {}", addr),
-            _ => ()
-        }
-
-        Ok(())
-    }
-
-    fn create_response(&self, stream: &mut TcpStream, req: ()) -> io::Result<()> {
-        Ok(())
     }
 }
