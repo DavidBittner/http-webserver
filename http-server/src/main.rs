@@ -1,8 +1,9 @@
-use std::net::{TcpListener, TcpStream};
-use log::*;
+use std::io;
 
 mod config;
 mod webserver;
+
+use webserver::WebServer;
 
 lazy_static::lazy_static! {
     pub static ref CONFIG: config::Config = {
@@ -22,53 +23,18 @@ lazy_static::lazy_static! {
             },
             Err(_) => {
                 config::Config {
-                    port: 8080
+                    port: 8080,
+                    addr: "0.0.0.0".parse().unwrap()
                 }
             }
         }
     };
 }
 
-use std::io::{Write, Read, BufRead, BufReader};
-use std::io;
-
-fn parse_request(stream: &mut TcpStream) -> io::Result<String> {
-    let reader = BufReader::new(stream);
-
-    let cont: String = reader.lines()
-        .map(Result::unwrap)
-        .take_while(|line| !line.is_empty())
-        .fold(String::new(), |tot, at| format!("{}{}", tot, at));
-
-    Ok(cont)
-}
-
-fn handle_request(stream: &mut TcpStream, mut req: String) -> io::Result<()> {
-    stream.write(resp.as_bytes())?;
-    stream.flush()?;
-
-    Ok(())
-}
-
-fn main() -> std::io::Result<()> {
+fn main() -> io::Result<()> {
     pretty_env_logger::init();
-
-    let addr = format!("127.0.0.1:{}", CONFIG.port);
-    info!("listening at addr: {}", addr);
-
-    let listener = TcpListener::bind(addr)?;
-
-    for stream in listener.incoming() {
-        let mut stream = stream?;
-
-        let string = parse_request(&mut stream)?;
-        let addr = stream.peer_addr()?;
-        info!("Request from: {}", addr);
-        info!("{}", string);
-
-        info!("handling...");
-        handle_request(&mut stream, string)?;
-    }
+    let mut server = WebServer::new(&CONFIG)?;
+    server.listen()?;
 
     Ok(())
 }
