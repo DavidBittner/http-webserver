@@ -1,11 +1,13 @@
 pub mod status_code;
 pub mod method;
 pub mod headers;
+pub mod request;
+
+pub use request::Request;
 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn test() {
     }
 }

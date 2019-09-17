@@ -1,3 +1,4 @@
+#[derive(Debug, PartialEq, Default)]
 pub enum Method {
     Get,
     Head,
