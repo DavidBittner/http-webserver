@@ -1,5 +1,5 @@
-use crate::method::Method;
-use crate::headers::HeaderList;
+use crate::method::*;
+use crate::headers::*;
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Default)]
@@ -7,11 +7,29 @@ pub struct Request {
     pub method:  Method,
     pub url:     String,
     pub version: String,
-    pub headers: HeaderList
+    pub headers: HeaderList,
+    pub content: Vec<u8>
+}
+
+pub enum RequestParsingError {
+    MethodError(UnknownMethodError),
+    HeaderError(HeaderError),
+}
+
+impl From<HeaderError> for RequestParsingError {
+    fn from(err: HeaderError) -> Self {
+        RequestParsingError::HeaderError(err)
+    }
+}
+
+impl From<UnknownMethodError> for RequestParsingError {
+    fn from(err: UnknownMethodError) -> Self {
+        RequestParsingError::MethodError(err)
+    }
 }
 
 impl FromStr for Request {
-    type Err = Box<dyn std::error::Error>;
+    type Err = RequestParsingError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut lines: Vec<&str> = s.lines()
@@ -30,6 +48,7 @@ impl FromStr for Request {
             url:     String::from(verbs[1]),
             version: String::from(verbs[2]),
             headers: header_block.parse()?,
+            content: Vec::new()
         })
     }
 }

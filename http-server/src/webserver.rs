@@ -2,7 +2,7 @@ mod socket_handler;
 
 use crate::CONFIG;
 use std::sync::mpsc::channel;
-use std::net::{TcpListener, TcpStream, SocketAddr};
+use std::net::TcpListener;
 use std::time::Duration;
 use std::collections::HashMap;
 use std::io;
@@ -80,8 +80,8 @@ impl WebServer {
 
                     match thread.join() {
                         Err(err) => {
-                            error!("thread did not terminate without errors: '{:?}'", err);
-                        }
+                            error!("connection ended with error: '{:?}'", err);
+                        },
                         _ => ()
                     }
 

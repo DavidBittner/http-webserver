@@ -3,7 +3,7 @@ pub mod method;
 pub mod headers;
 pub mod request;
 
-pub use request::Request;
+pub use request::*;
 
 #[cfg(test)]
 mod tests {

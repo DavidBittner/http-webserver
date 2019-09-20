@@ -1,9 +1,15 @@
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq)]
 pub enum Method {
     Get,
     Head,
     Options,
-    Trace
+    Trace,
+}
+
+impl Default for Method {
+    fn default() -> Self {
+        Method::Get
+    }
 }
 
 use std::error::Error;
