@@ -15,7 +15,7 @@ impl Default for Method {
 use std::error::Error;
 
 #[derive(Debug)]
-pub struct UnknownMethodError(String);
+pub struct UnknownMethodError(pub String);
 
 impl std::fmt::Display for UnknownMethodError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

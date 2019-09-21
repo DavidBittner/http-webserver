@@ -3,13 +3,21 @@ use crate::headers::*;
 use std::str::FromStr;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, PartialEq, Default)]
-pub struct Request {
-    pub method:  Method,
-    pub url:     String,
-    pub version: String,
-    pub headers: HeaderList,
-    pub content: Vec<u8>
+pub mod get;
+pub use get::*;
+pub mod head;
+pub use head::*;
+pub mod options;
+pub use options::*;
+pub mod trace;
+pub use trace::*;
+
+#[derive(Debug, PartialEq)]
+pub enum Request {
+    Get(GetRequest),
+    Head(HeadRequest),
+    Options(OptionsRequest),
+    Trace(TraceRequest)
 }
 
 #[derive(Debug)]
@@ -53,18 +61,30 @@ impl FromStr for Request {
         let verbs: Vec<&str> = lines.remove(0)
             .split_whitespace()
             .collect();
+        assert_eq!(3, verbs.len());
 
         let header_block: String = lines.iter()
             .take_while(|line| !line.is_empty())
             .fold(String::new(), |cur, new| format!("{}\r\n{}", cur, new));
 
-        Ok(Request{
-            method:  verbs[0].parse()?,
-            url:     String::from(verbs[1]),
-            version: String::from(verbs[2]),
-            headers: header_block.parse()?,
-            content: Vec::new()
-        })
+        let method = verbs[0];
+        let ver    = verbs[1];
+        let url    = verbs[2];
+
+        use Request::*;
+        match method.to_lowercase().as_str() {
+            "get" =>
+                Ok(Get(GetRequest::new(url, ver, &header_block)?)),
+            "head" =>
+                Ok(Head(HeadRequest::new(url, ver, &header_block)?)),
+            "options" =>
+                Ok(Options(OptionsRequest::new(url, ver, &header_block)?)),
+            "trace" =>
+                Ok(Trace(TraceRequest::new(url, ver, &header_block)?)),
+            _     =>
+                Err(UnknownMethodError(verbs[0].into()).into())
+
+        }
     }
 }
 

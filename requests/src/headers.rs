@@ -21,9 +21,9 @@ use connection::*;
 #[derive(Debug, PartialEq, Default)]
 pub struct HeaderList {
     ///The connection status after this request.
-    connection: Connection
+    connection: Option<Connection>,
+    host: Option<String>
 }
-
 
 use std::str::FromStr;
 use std::error::Error;
@@ -74,13 +74,15 @@ impl FromStr for HeaderList {
                 match verb.to_lowercase().as_str() {
                     "connection:" => {
                         match desc.parse::<Connection>() {
-                            Ok(opt) => ret.connection = opt,
+                            Ok(opt) => ret.connection = Some(opt),
                             Err(_)  => return Err(UnrecognizedParameterError{
                                 head: verb.into(),
                                 param: desc.into()
                             })
                         }
                     },
+                    "host:" =>
+                        ret.host = Some(desc.into()),
                     _ => return Err(UnknownHeaderError(verb.into()))
                 }
             }
