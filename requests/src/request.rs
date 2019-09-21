@@ -1,6 +1,7 @@
 use crate::method::*;
 use crate::headers::*;
 use std::str::FromStr;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Request {
@@ -11,10 +12,24 @@ pub struct Request {
     pub content: Vec<u8>
 }
 
+#[derive(Debug)]
 pub enum RequestParsingError {
     MethodError(UnknownMethodError),
     HeaderError(HeaderError),
 }
+
+impl Display for RequestParsingError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        use RequestParsingError::*;
+
+        match self {
+            MethodError(err) => write!(f, "{}", err),
+            HeaderError(err) => write!(f, "{}", err)
+        }
+    }
+}
+
+impl std::error::Error for RequestParsingError {}
 
 impl From<HeaderError> for RequestParsingError {
     fn from(err: HeaderError) -> Self {

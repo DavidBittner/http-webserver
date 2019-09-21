@@ -2,7 +2,7 @@ use std::net::{TcpStream, SocketAddr};
 use std::io::{BufRead, BufReader};
 use std::io;
 
-use crate::CONFIG;
+use std::fmt::{Display, Formatter};
 use requests::*;
 use std::error::Error;
 
@@ -15,10 +15,24 @@ pub struct SocketHandler {
     addr:   SocketAddr,
 }
 
+#[derive(Debug)]
 pub enum SocketError {
     IoError(std::io::Error),
     RequestError(RequestParsingError),
 }
+
+impl Display for SocketError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        use SocketError::*;
+
+        match self {
+            IoError(err) => write!(f, "IoError: {}", err),
+            RequestError(err) => write!(f, "{}", err)
+        }
+    }
+}
+
+impl Error for SocketError {}
 
 impl From<RequestParsingError> for SocketError {
     fn from(err: RequestParsingError) -> Self {
@@ -55,9 +69,11 @@ impl SocketHandler {
         for line in reader.lines() {
             let line = line?;
             if line.is_empty() {
+                buff.push_str("\r\n");
                 break;
             }else{
                 buff.push_str(&line);
+                buff.push_str("\r\n");
             }
         }
 

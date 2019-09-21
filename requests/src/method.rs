@@ -15,11 +15,11 @@ impl Default for Method {
 use std::error::Error;
 
 #[derive(Debug)]
-pub struct UnknownMethodError;
+pub struct UnknownMethodError(String);
 
 impl std::fmt::Display for UnknownMethodError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ParseMethodError")
+        write!(f, "UnknownMethodError: '{}'", self.0)
     }
 }
 
@@ -36,7 +36,7 @@ impl FromStr for Method {
             "HEAD"    => Ok(Method::Head),
             "OPTIONS" => Ok(Method::Options),
             "TRACE"   => Ok(Method::Trace),
-            _         => Err(UnknownMethodError)
+            _         => Err(UnknownMethodError(String::from(s)))
         }
     }
 }

@@ -54,7 +54,7 @@ impl WebServer {
                         other_tx.send(addr)
                             .expect("failed to send addr");
 
-                        res
+                        return res;
                     });
 
                     conn_map.insert(addr, handle);
@@ -79,13 +79,28 @@ impl WebServer {
                         .expect("attempted to unwrap a connection that did not exist");
 
                     match thread.join() {
-                        Err(err) => {
-                            error!("connection ended with error: '{:?}'", err);
-                        },
-                        _ => ()
+                        Err(err) =>
+                            error!(
+                                "a thread panicked: '{:?}'",
+                                err
+                            ),
+                        Ok(res) => {
+                            match res {
+                                Err(err) =>
+                                    error!(
+                                        "'{}' terminated with an error: '{}'",
+                                        addr,
+                                        err
+                                    ),
+                                Ok(_) =>
+                                    trace!(
+                                        "'{}' closed successfully",
+                                        addr
+                                    )
+                            }
+                        }
                     }
 
-                    trace!("connection '{}' terminated successfully", addr);
                 },
                 Err(_) => continue
             }
