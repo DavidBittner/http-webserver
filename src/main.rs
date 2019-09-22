@@ -1,38 +1,42 @@
 use std::io;
 
-mod config;
 mod webserver;
 
 use webserver::WebServer;
+use config::Config;
+use log::*;
 
 lazy_static::lazy_static! {
-    pub static ref CONFIG: config::Config = {
-        use std::fs::File;
-        use std::io::Read;
+    pub static ref CONFIG: Config = {
+        let mut conf = Config::default();
+        conf.set_default("port", 8080).unwrap();
+        conf.set_default("addr", "0.0.0.0").unwrap();
 
-        let file = File::open("config.yml");
+        let root = std::env::current_dir();
+        let root = root
+            .unwrap()
+            .into_os_string();
 
-        match file {
-            Ok(mut file) => {
-                let mut contents = String::new();
-                file.read_to_string(&mut contents)
-                    .expect("failed to read config file.");
+        conf.set_default("root", root.to_str().unwrap_or("")).unwrap();
 
-                serde_yaml::from_str(&contents)
-                    .expect("fhe config file is malformed yaml.")
-            },
-            Err(_) => {
-                config::Config {
-                    port: 8080,
-                    addr: "0.0.0.0".parse().unwrap()
-                }
-            }
-        }
+        conf
+            .merge(config::File::with_name("config.yml")).unwrap()
+            .merge(config::Environment::with_prefix("SERV")).unwrap();
+
+        conf
     };
 }
 
 fn main() -> io::Result<()> {
+    use std::collections::HashMap;
+
     pretty_env_logger::init();
+
+    trace!(
+        "initialized with config: \n{:#?}",
+        CONFIG.clone().try_into::<HashMap<String, String>>().unwrap()
+    );
+
     let mut server = WebServer::new()?;
     server.listen()?;
 

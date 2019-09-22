@@ -21,8 +21,8 @@ impl WebServer {
         info!("creating new webserver...");
         let addr = format!(
             "{}:{}",
-            CONFIG.addr,
-            CONFIG.port
+            CONFIG.get_str("addr").unwrap(),
+            CONFIG.get_int("port").unwrap()
         );
 
         let listener = TcpListener::bind(&addr)?;
