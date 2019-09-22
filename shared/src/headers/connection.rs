@@ -2,7 +2,7 @@ use std::str::FromStr;
 use std::error::Error;
 
 ///An enum that contains the available options for modifiying a connection.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Connection {
     ///Close the connection.
     Close
@@ -11,6 +11,15 @@ pub enum Connection {
 impl Default for Connection {
     fn default() -> Connection {
         Connection::Close
+    }
+}
+
+impl std::fmt::Display for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Connection::Close =>
+                write!(f, "close")
+        }
     }
 }
 

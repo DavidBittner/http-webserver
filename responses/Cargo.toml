@@ -5,5 +5,11 @@ authors = ["David Bittner <bittneradave@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+shared = {path = "../shared/"}
+
 num-traits = "0.2.8"
 num-derive = "0.2.5"
+
+mime = "0.3.14"
+
+chrono = "0.4.9"

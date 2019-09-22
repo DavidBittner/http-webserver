@@ -1,5 +1,5 @@
 [package]
-name = "requests"
+name = "shared"
 version = "0.1.0"
 authors = ["David Bittner <bittneradave@gmail.com>"]
 edition = "2018"
@@ -8,4 +8,5 @@ edition = "2018"
 num-traits = "0.2.8"
 num-derive = "0.2.5"
 
-shared = {path = "../shared/"}
+chrono = "0.4.9"
+mime = "0.3.14"

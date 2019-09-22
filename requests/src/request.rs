@@ -1,8 +1,9 @@
-use crate::method::*;
-use crate::headers::*;
+use shared::method::*;
 use std::str::FromStr;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
+
+use shared::headers::*;
 
 #[derive(Debug, PartialEq)]
 pub struct Request {

@@ -1,5 +1,5 @@
 use std::net::{TcpStream, SocketAddr};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::io;
 
 use std::fmt::{Display, Formatter};
@@ -11,7 +11,8 @@ use log::*;
 use crate::CONFIG;
 
 use requests::*;
-use requests::method::*;
+use responses::Response;
+use shared::*;
 
 type Result<T> = std::result::Result<T, SocketError>;
 
@@ -71,13 +72,29 @@ impl SocketHandler {
     }
 
     pub fn dispatch(mut self) -> Result<()> {
+        let mut conn = Connection::Close;
+
         loop {
             let req = self.parse_request()?;
 
             match req.method {
-                Method::Get => self.get(&req)?,
+                Method::Get => {
+                    let resp = self.get(&req)?;
+
+                    conn = resp.headers.connection
+                        .clone()
+                        .unwrap_or(Connection::Close);
+
+                    write!(self.stream, "{}", resp)?;
+                    trace!("response written to '{}'", self.addr);
+                },
                 _ => ()
             };
+
+            match conn {
+                Connection::Close =>
+                    break
+            }
         }
 
         Ok(())
@@ -99,12 +116,12 @@ impl SocketHandler {
         }
 
         let request: Request = buff.parse()?;
-        trace!("received request from '{}'\n{:#?}", self.addr, request);
+        trace!("received request from '{}'", self.addr);
 
         Ok(request)
     }
 
-    fn get(&mut self, req: &Request) -> io::Result<()> {
+    fn get(&mut self, req: &Request) -> io::Result<Response> {
         let url = if req.url.starts_with("/") {
             req.url.strip_prefix("/")
                 .unwrap()
@@ -114,7 +131,6 @@ impl SocketHandler {
         };
 
         let path = ROOT.clone().join(&url);
-
-        Ok(())
+        Ok(Response::file_response(&path))
     }
 }

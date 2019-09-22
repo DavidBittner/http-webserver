@@ -1,6 +1,9 @@
 pub mod connection;
 pub use connection::*;
 
+use chrono::{DateTime, Utc};
+use mime::*;
+
 /// This module simple contains the header structure as well as parsing code.
 /// The usage is as follows: 
 /// ```rust
@@ -23,8 +26,12 @@ pub use connection::*;
 #[derive(Debug, PartialEq, Default)]
 pub struct HeaderList {
     ///The connection status after this request.
-    pub connection: Option<Connection>,
-    pub host: Option<String>
+    pub connection:   Option<Connection>,
+    pub host:         Option<String>,
+    pub server:       Option<String>,
+    pub date:         Option<DateTime<Utc>>,
+    pub content_type: Option<Mime>,
+    pub content_len:  Option<usize>
 }
 
 use std::str::FromStr;
@@ -85,6 +92,47 @@ impl FromStr for HeaderList {
                     },
                     "host:" =>
                         ret.host = Some(desc.into()),
+                    "server:" =>
+                        ret.server = Some(desc.into()),
+                    "date:" => {
+                        let date: DateTime<Utc> = desc.parse()
+                            .map_err(|_| {
+                                InvalidFormatError(
+                                    format!(
+                                        "'{}' is not a valid date format.",
+                                        desc
+                                    )
+                                )
+                            })?;
+
+                        ret.date = Some(date);
+                    },
+                    "content-type:" => {
+                        let typ: Mime = desc.parse()
+                            .map_err(|_| {
+                                InvalidFormatError(
+                                    format!(
+                                        "unknown mime type: '{}'",
+                                        desc
+                                    )
+                                )
+                            })?;
+
+                        ret.content_type = Some(typ);
+                    },
+                    "content-length:" => {
+                        let len: usize = desc.parse()
+                            .map_err(|_| {
+                                InvalidFormatError(
+                                    format!(
+                                        "invalid content length: '{}'",
+                                        desc
+                                    )
+                                )
+                            })?;
+                        
+                        ret.content_len = Some(len);
+                    },
                     _       =>
                         return Err(UnknownHeaderError(verb.into()))
                 }
@@ -95,6 +143,57 @@ impl FromStr for HeaderList {
     }
 }
 
+impl HeaderList {
+    pub fn response_headers(name: String) -> Self {
+        HeaderList {
+            date: Utc::now().into(),
+            server: format!("{}", name).into(),
+            .. Default::default()
+        }
+    }
+}
+
+use std::fmt::{Display, Formatter};
+impl Display for HeaderList {
+    fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
+        match self.date {
+            Some(date) =>
+                write!(fmt, "Date: {}\r\n", date.to_rfc2822())?,
+            None =>
+                ()
+        };
+
+        match &self.server {
+            Some(name) =>
+                write!(fmt, "Server: {}\r\n", name)?,
+            None => 
+                ()
+        };
+
+        match &self.content_len {
+            Some(len) =>
+                write!(fmt, "Content-Length: {}\r\n", len)?,
+            None =>
+                ()
+        };
+
+        match &self.content_type {
+            Some(typ) =>
+                write!(fmt, "Content-Type: {}\r\n", typ)?,
+            None =>
+                ()
+        };
+
+        match &self.connection {
+            Some(typ) =>
+                write!(fmt, "Content-Type: {}\r\n", typ)?,
+            None =>
+                ()
+        };
+
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {

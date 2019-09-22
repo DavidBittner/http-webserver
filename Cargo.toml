@@ -1,17 +1,7 @@
-[package]
-name = "http-webserver"
-version = "0.1.0"
-authors = ["David Bittner <bittneradave@gmail.com>"]
-edition = "2018"
-
-[dependencies]
-requests = {path = "./requests/"}
-
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.8.9"
-
-log = "0.4.8"
-pretty_env_logger = "0.3.1"
-
-config = { version = "0.9", features = ["yaml"] }
-lazy_static = "1.4.0"
+[workspace]
+members = [
+    "server",
+    "shared",
+    "responses",
+    "requests"
+]
