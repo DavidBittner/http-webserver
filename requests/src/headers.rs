@@ -1,6 +1,5 @@
 pub mod connection;
-
-use connection::*;
+pub use connection::*;
 
 /// This module simple contains the header structure as well as parsing code.
 /// The usage is as follows: 
@@ -11,7 +10,10 @@ use connection::*;
 ///
 /// assert_eq!(
 ///     as_struct.unwrap(),
-///     Default::default()
+///     HeaderList{
+///         connection: Some(Connection::Close),
+///         host: None
+///     }
 /// );
 /// ```
 
@@ -21,8 +23,8 @@ use connection::*;
 #[derive(Debug, PartialEq, Default)]
 pub struct HeaderList {
     ///The connection status after this request.
-    connection: Option<Connection>,
-    host: Option<String>
+    pub connection: Option<Connection>,
+    pub host: Option<String>
 }
 
 use std::str::FromStr;
@@ -83,7 +85,8 @@ impl FromStr for HeaderList {
                     },
                     "host:" =>
                         ret.host = Some(desc.into()),
-                    _ => return Err(UnknownHeaderError(verb.into()))
+                    _       =>
+                        return Err(UnknownHeaderError(verb.into()))
                 }
             }
         }

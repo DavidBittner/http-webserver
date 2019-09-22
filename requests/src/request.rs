@@ -2,22 +2,14 @@ use crate::method::*;
 use crate::headers::*;
 use std::str::FromStr;
 use std::fmt::{Display, Formatter};
-
-pub mod get;
-pub use get::*;
-pub mod head;
-pub use head::*;
-pub mod options;
-pub use options::*;
-pub mod trace;
-pub use trace::*;
+use std::path::PathBuf;
 
 #[derive(Debug, PartialEq)]
-pub enum Request {
-    Get(GetRequest),
-    Head(HeadRequest),
-    Options(OptionsRequest),
-    Trace(TraceRequest)
+pub struct Request {
+    pub method: Method,
+    pub url:    PathBuf,
+    pub ver:    String,
+    pub headers: HeaderList
 }
 
 #[derive(Debug)]
@@ -68,23 +60,15 @@ impl FromStr for Request {
             .fold(String::new(), |cur, new| format!("{}\r\n{}", cur, new));
 
         let method = verbs[0];
-        let ver    = verbs[1];
-        let url    = verbs[2];
-
-        use Request::*;
-        match method.to_lowercase().as_str() {
-            "get" =>
-                Ok(Get(GetRequest::new(url, ver, &header_block)?)),
-            "head" =>
-                Ok(Head(HeadRequest::new(url, ver, &header_block)?)),
-            "options" =>
-                Ok(Options(OptionsRequest::new(url, ver, &header_block)?)),
-            "trace" =>
-                Ok(Trace(TraceRequest::new(url, ver, &header_block)?)),
-            _     =>
-                Err(UnknownMethodError(verbs[0].into()).into())
-
-        }
+        let url    = verbs[1];
+        let ver    = verbs[2];
+        
+        Ok(Request{
+            method: method.parse()?,
+            url: url.into(),
+            ver: ver.into(),
+            headers: header_block.parse()?
+        })
     }
 }
 

@@ -3,12 +3,28 @@ use std::io::{BufRead, BufReader};
 use std::io;
 
 use std::fmt::{Display, Formatter};
-use requests::*;
 use std::error::Error;
+use std::path::{Path, PathBuf};
 
 use log::*;
 
+use crate::CONFIG;
+
+use requests::*;
+use requests::method::*;
+
 type Result<T> = std::result::Result<T, SocketError>;
+
+lazy_static::lazy_static! {
+    static ref ROOT: PathBuf = {
+        lazy_static::initialize(&CONFIG);
+
+        let root = CONFIG.get_str("root")
+            .expect("root not defined (shouldn't happen)");
+
+        PathBuf::from(root)
+    };
+}
 
 pub struct SocketHandler {
     stream: TcpStream,
@@ -55,15 +71,20 @@ impl SocketHandler {
     }
 
     pub fn dispatch(mut self) -> Result<()> {
-        let req = self.parse_request()?;
-        self.respond(req)?;
+        loop {
+            let req = self.parse_request()?;
+
+            match req.method {
+                Method::Get => self.get(&req)?,
+                _ => ()
+            };
+        }
 
         Ok(())
     }
 
     fn parse_request(&mut self) -> Result<Request> {
         let reader = BufReader::new(&mut self.stream);
-        
         let mut buff = String::new();
 
         for line in reader.lines() {
@@ -83,7 +104,17 @@ impl SocketHandler {
         Ok(request)
     }
 
-    fn respond(&mut self, req: Request) -> io::Result<()> {
+    fn get(&mut self, req: &Request) -> io::Result<()> {
+        let url = if req.url.starts_with("/") {
+            req.url.strip_prefix("/")
+                .unwrap()
+                .to_owned()
+        }else{
+            req.url.to_owned()
+        };
+
+        let path = ROOT.clone().join(&url);
+
         Ok(())
     }
 }
