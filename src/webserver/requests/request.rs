@@ -1,9 +1,9 @@
-use shared::method::*;
+use crate::webserver::shared::method::*;
+use crate::webserver::shared::headers::*;
+
 use std::str::FromStr;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
-
-use shared::headers::*;
 
 #[derive(Debug, PartialEq)]
 pub struct Request {

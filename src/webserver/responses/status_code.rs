@@ -11,15 +11,6 @@ pub enum StatusCode {
     VersionNotSupported = 505,
 }
 
-use std::error::Error;
-
-pub fn parse_code(i: &str) -> Result<StatusCode, Box<dyn Error>> {
-    let num = i.parse::<u16>()?;
-    num_traits::FromPrimitive::from_u16(
-        num
-    ).ok_or(format!("Unknown status code: {}", num).into())
-}
-
 use std::fmt::{Display, Formatter};
 impl Display for StatusCode {
     fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {

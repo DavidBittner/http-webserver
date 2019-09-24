@@ -1,3 +1,7 @@
+use super::requests::*;
+use super::responses::*;
+use super::shared::*;
+
 use std::net::{TcpStream, SocketAddr};
 use std::io::{BufRead, BufReader, Write};
 use std::io;
@@ -10,9 +14,6 @@ use log::*;
 
 use crate::CONFIG;
 
-use requests::*;
-use responses::Response;
-use shared::*;
 
 type Result<T> = std::result::Result<T, SocketError>;
 
@@ -85,7 +86,7 @@ impl SocketHandler {
                         .clone()
                         .unwrap_or(Connection::Close);
 
-                    write!(self.stream, "{}", resp)?;
+                    resp.write_self(&mut self.stream)?;
                     trace!("response written to '{}'", self.addr);
                 },
                 _ => ()

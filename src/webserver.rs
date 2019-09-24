@@ -1,5 +1,9 @@
 mod socket_handler;
 
+pub mod responses;
+pub mod shared;
+pub mod requests;
+
 use crate::CONFIG;
 use std::sync::mpsc::channel;
 use std::net::TcpListener;

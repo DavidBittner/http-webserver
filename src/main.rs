@@ -33,7 +33,7 @@ fn main() -> io::Result<()> {
     pretty_env_logger::init();
 
     trace!(
-        "initialized with config: \n{:#?}",
+        "initialized with config: \n{:#?}\n",
         CONFIG.clone().try_into::<HashMap<String, String>>().unwrap()
     );
 
