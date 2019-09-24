@@ -4,12 +4,10 @@ use num_traits::ToPrimitive;
 use mime::Mime;
 use std::path::Path;
 use crate::webserver::shared::*;
-use std::fs::File;
-use std::io::Read;
 use log::*;
 
-static SERVER_NAME: &'static str = "ScratchServer";
-static SERVER_VERS: &'static str = env!("CARGO_PKG_VERSION");
+pub static SERVER_NAME: &'static str = "ScratchServer";
+pub static SERVER_VERS: &'static str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, PartialEq)]
 pub struct Response {
@@ -19,11 +17,7 @@ pub struct Response {
 }
 
 impl Response {
-    fn get_name() -> String {
-        format!("{}-{}", SERVER_NAME, SERVER_VERS)
-    }
-
-    fn not_found(mut headers: HeaderList) -> Self {
+    pub fn not_found(mut headers: HeaderList) -> Self {
         headers.content_len = Some(0);
         Self {
             code: StatusCode::NotFound,
@@ -32,14 +26,62 @@ impl Response {
         }
     }
 
+    pub fn internal_error(mut headers: HeaderList) -> Self {
+        headers.content_len = None;
+        headers.content_type = None;
+        Self {
+            code: StatusCode::InternalServerError,
+            headers: headers,
+            data: None
+        }
+    }
+
+    pub fn forbidden(mut headers: HeaderList) -> Self {
+        headers.content_len = None;
+        headers.content_type = None;
+        Self {
+            code: StatusCode::Forbidden,
+            headers: headers,
+            data: None
+        }
+    }
+
+    pub fn unsupported_version(headers: HeaderList) -> Self {
+        Self {
+            code: StatusCode::VersionNotSupported,
+            headers: headers,
+            data: None
+        }
+    }
+
     pub fn file_response(path: &Path) -> Self {
         use std::fs;
 
-        let mut headers = HeaderList::response_headers(Response::get_name());
+        let mut headers = HeaderList::response_headers();
 
         match fs::read(path) {
             Ok(buff) => {
                 let code = StatusCode::Ok;
+
+                match fs::metadata(path) {
+                    Ok(meta) => {
+                        let time = meta.modified();
+                        match time {
+                            Ok(time) => {
+                                let time = time.into();
+                                headers.last_modified = Some(time);
+                            },
+                            Err(err) => {
+                                error!("error occured while retrieving modified time: '{}'", err);
+                                return Self::internal_error(headers);
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        error!("error occurred retrieving metadata: '{}'", err);
+                        return Self::forbidden(headers);
+                    }
+                }
 
                 let ext = path.extension()
                     .unwrap_or(std::ffi::OsStr::new(""))
@@ -62,7 +104,6 @@ impl Response {
     }
 
     pub fn write_self<'a, T: std::io::Write + Sized>(self, writer: &'a mut T) -> std::io::Result<()> {
-
         let num = self.code.to_u16()
             .unwrap_or(0);
 

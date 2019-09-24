@@ -1,19 +1,20 @@
 use super::requests::*;
 use super::responses::*;
+use super::shared::headers::*;
 use super::shared::*;
 
 use std::net::{TcpStream, SocketAddr};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::io;
 
 use std::fmt::{Display, Formatter};
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 
 use log::*;
+use path_clean::{PathClean};
 
 use crate::CONFIG;
-
 
 type Result<T> = std::result::Result<T, SocketError>;
 
@@ -73,24 +74,37 @@ impl SocketHandler {
     }
 
     pub fn dispatch(mut self) -> Result<()> {
-        let mut conn = Connection::Close;
+        let conn;
 
         loop {
             let req = self.parse_request()?;
 
-            match req.method {
-                Method::Get => {
-                    let resp = self.get(&req)?;
 
-                    conn = resp.headers.connection
-                        .clone()
-                        .unwrap_or(Connection::Close);
+            let mut resp = if req.ver != "HTTP/1.1" {
+                Response::unsupported_version(HeaderList::response_headers())
+            }else{
+                match req.method {
+                    Method::Get => {
+                        self.get(&req)?
+                    },
+                    Method::Head => {
+                        let mut resp = self.get(&req)?;
+                        resp.data = None;
+                        resp
+                    },
+                    _ =>{
+                        Response::not_found(HeaderList::response_headers())
+                    }
 
-                    resp.write_self(&mut self.stream)?;
-                    trace!("response written to '{}'", self.addr);
-                },
-                _ => ()
+                }
             };
+
+            conn = resp.headers.connection
+                .get_or_insert(Connection::Close)
+                .clone();
+
+            resp.write_self(&mut self.stream)?;
+            trace!("response written to '{}'", self.addr);
 
             match conn {
                 Connection::Close =>
@@ -131,7 +145,13 @@ impl SocketHandler {
             req.url.to_owned()
         };
 
-        let path = ROOT.clone().join(&url);
-        Ok(Response::file_response(&path))
+        let url = ROOT.join(url)
+            .clean();
+
+        if url.starts_with(&*ROOT) {
+            Ok(Response::file_response(&url))
+        }else{
+            Ok(Response::forbidden(HeaderList::response_headers()))
+        }
     }
 }

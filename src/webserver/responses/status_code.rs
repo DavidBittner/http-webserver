@@ -9,6 +9,7 @@ pub enum StatusCode {
     InternalServerError = 500,
     NotImplemented      = 501,
     VersionNotSupported = 505,
+    Unknown             = 0,
 }
 
 use std::fmt::{Display, Formatter};
@@ -17,7 +18,12 @@ impl Display for StatusCode {
         use StatusCode::*;
         let wr = match self {
             Ok => "Ok",
-            _  => "Unimplemented"
+            NotFound            => "Not Found",
+            Forbidden           => "Forbidden",
+            InternalServerError => "Internal Server Error",
+            VersionNotSupported => "HTTP Version Not Supported",
+            BadRequest          => "Bad Request",
+            NotImplemented | _  => "Not Implemented",
         };
 
         write!(fmt, "{}", wr)

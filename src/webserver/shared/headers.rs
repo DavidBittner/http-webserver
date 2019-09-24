@@ -26,12 +26,13 @@ use mime::*;
 #[derive(Debug, PartialEq, Default)]
 pub struct HeaderList {
     ///The connection status after this request.
-    pub connection:   Option<Connection>,
-    pub host:         Option<String>,
-    pub server:       Option<String>,
-    pub date:         Option<DateTime<Utc>>,
-    pub content_type: Option<Mime>,
-    pub content_len:  Option<usize>
+    pub connection:    Option<Connection>,
+    pub host:          Option<String>,
+    pub server:        Option<String>,
+    pub date:          Option<DateTime<Utc>>,
+    pub content_type:  Option<Mime>,
+    pub content_len:   Option<usize>,
+    pub last_modified: Option<DateTime<Utc>>
 }
 
 use std::str::FromStr;
@@ -133,6 +134,19 @@ impl FromStr for HeaderList {
                         
                         ret.content_len = Some(len);
                     },
+                    "last-modified:" => {
+                        let time = desc.parse()
+                            .map_err(|_| {
+                                InvalidFormatError(
+                                    format!(
+                                        "invalid date format: '{}'",
+                                        desc
+                                    )
+                                )
+                            })?;
+
+                        ret.last_modified = Some(time);
+                    },
                     _       =>
                         return Err(UnknownHeaderError(verb.into()))
                 }
@@ -144,10 +158,15 @@ impl FromStr for HeaderList {
 }
 
 impl HeaderList {
-    pub fn response_headers(name: String) -> Self {
+    pub fn response_headers() -> Self {
+        use crate::webserver::responses::{
+            SERVER_NAME,
+            SERVER_VERS
+        };
+
         HeaderList {
             date: Utc::now().into(),
-            server: format!("{}", name).into(),
+            server: format!("{}-{}", SERVER_NAME, SERVER_VERS).into(),
             .. Default::default()
         }
     }
@@ -186,7 +205,14 @@ impl Display for HeaderList {
 
         match &self.connection {
             Some(typ) =>
-                write!(fmt, "Content-Type: {}\r\n", typ)?,
+                write!(fmt, "Connection: {}\r\n", typ)?,
+            None =>
+                ()
+        };
+
+        match &self.last_modified {
+            Some(modi) =>
+                write!(fmt, "Last-Modified: {}\r\n", modi.to_rfc2822())?,
             None =>
                 ()
         };
