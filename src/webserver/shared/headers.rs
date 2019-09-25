@@ -170,6 +170,11 @@ impl HeaderList {
             .. Default::default()
         }
     }
+
+    fn format_date(date: &DateTime<Utc>) -> String {
+        date.format("%a, %d %b %Y %T GMT")
+            .to_string()
+    }
 }
 
 use std::fmt::{Display, Formatter};
@@ -177,7 +182,7 @@ impl Display for HeaderList {
     fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
         match self.date {
             Some(date) =>
-                write!(fmt, "Date: {}\r\n", date.to_rfc2822())?,
+                write!(fmt, "Date: {}\r\n", HeaderList::format_date(&date))?,
             None =>
                 ()
         };
@@ -212,7 +217,7 @@ impl Display for HeaderList {
 
         match &self.last_modified {
             Some(modi) =>
-                write!(fmt, "Last-Modified: {}\r\n", modi.to_rfc2822())?,
+                write!(fmt, "Last-Modified: {}\r\n", HeaderList::format_date(modi))?,
             None =>
                 ()
         };

@@ -9,12 +9,11 @@ use std::io;
 
 use std::fmt::{Display, Formatter};
 use std::error::Error;
-use std::path::{PathBuf};
 
 use log::*;
-use path_clean::{PathClean};
 
 use crate::CONFIG;
+use std::path::{PathBuf, Path};
 
 type Result<T> = std::result::Result<T, SocketError>;
 
@@ -77,25 +76,34 @@ impl SocketHandler {
         let conn;
 
         loop {
-            let req = self.parse_request()?;
+            let req = self.parse_request();
 
+            let resp_headers = HeaderList::response_headers();
+            //If the response failed to be parsed, send a bad request
+            let mut resp = match req {
+                Ok(req) => {
+                    if req.ver != "HTTP/1.1" {
+                        Response::unsupported_version(resp_headers)
+                    }else{
+                        match req.method {
+                            Method::Get => {
+                                self.get(&req)?
+                            },
+                            Method::Head => {
+                                let mut resp = self.get(&req)?;
+                                resp.data = None;
+                                resp
+                            },
+                            _ =>{
+                                Response::not_found(resp_headers)
+                            }
 
-            let mut resp = if req.ver != "HTTP/1.1" {
-                Response::unsupported_version(HeaderList::response_headers())
-            }else{
-                match req.method {
-                    Method::Get => {
-                        self.get(&req)?
-                    },
-                    Method::Head => {
-                        let mut resp = self.get(&req)?;
-                        resp.data = None;
-                        resp
-                    },
-                    _ =>{
-                        Response::not_found(HeaderList::response_headers())
+                        }
                     }
-
+                },
+                Err(err) => {
+                    error!("{}", err);
+                    Response::bad_request(resp_headers)
                 }
             };
 
@@ -137,16 +145,15 @@ impl SocketHandler {
     }
 
     fn get(&mut self, req: &Request) -> io::Result<Response> {
-        let url = if req.url.starts_with("/") {
-            req.url.strip_prefix("/")
+        let rel_path = if req.path.starts_with("/") {
+            req.path.strip_prefix("/")
                 .unwrap()
-                .to_owned()
         }else{
-            req.url.to_owned()
+            &req.path
         };
 
-        let url = ROOT.join(url)
-            .clean();
+        let url: &Path = &ROOT
+            .join(rel_path);
 
         if url.starts_with(&*ROOT) {
             Ok(Response::file_response(&url))

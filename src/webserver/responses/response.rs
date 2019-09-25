@@ -54,6 +54,14 @@ impl Response {
         }
     }
 
+    pub fn bad_request(headers: HeaderList) -> Self {
+        Self {
+            code: StatusCode::BadRequest,
+            headers: headers,
+            data: None
+        }
+    }
+
     pub fn file_response(path: &Path) -> Self {
         use std::fs;
 

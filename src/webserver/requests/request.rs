@@ -3,12 +3,13 @@ use crate::webserver::shared::headers::*;
 
 use std::str::FromStr;
 use std::fmt::{Display, Formatter};
+use url::{ParseError, Url};
 use std::path::PathBuf;
 
 #[derive(Debug, PartialEq)]
 pub struct Request {
     pub method: Method,
-    pub url:    PathBuf,
+    pub path:    PathBuf,
     pub ver:    String,
     pub headers: HeaderList
 }
@@ -16,6 +17,7 @@ pub struct Request {
 #[derive(Debug)]
 pub enum RequestParsingError {
     MethodError(UnknownMethodError),
+    UrlError(ParseError),
     HeaderError(HeaderError),
 }
 
@@ -25,7 +27,8 @@ impl Display for RequestParsingError {
 
         match self {
             MethodError(err) => write!(f, "{}", err),
-            HeaderError(err) => write!(f, "{}", err)
+            HeaderError(err) => write!(f, "{}", err),
+            UrlError(err)    => write!(f, "{}", err)
         }
     }
 }
@@ -41,6 +44,12 @@ impl From<HeaderError> for RequestParsingError {
 impl From<UnknownMethodError> for RequestParsingError {
     fn from(err: UnknownMethodError) -> Self {
         RequestParsingError::MethodError(err)
+    }
+}
+
+impl From<ParseError> for RequestParsingError {
+    fn from(err: ParseError) -> Self {
+        RequestParsingError::UrlError(err)
     }
 }
 
@@ -63,12 +72,34 @@ impl FromStr for Request {
         let method = verbs[0];
         let url    = verbs[1];
         let ver    = verbs[2];
+
+        let headers: HeaderList = header_block.parse()?;
+
+        let url = if url != "*" {
+            match &headers.host {
+                Some(host) => {
+                    let base = format!("http://{}/", host);
+
+                    Url::options()
+                        .base_url(Some(&Url::parse(&base)?))
+                        .parse(&url)?
+                        .path()
+                        .to_owned()
+                },
+                None =>
+                    Url::parse(&url)?
+                        .path()
+                        .to_owned()
+            }
+        }else{
+            url.to_owned()
+        };
         
         Ok(Request{
             method: method.parse()?,
-            url: url.into(),
-            ver: ver.into(),
-            headers: header_block.parse()?
+            path: url.into(),
+            ver:  ver.into(),
+            headers: headers
         })
     }
 }
