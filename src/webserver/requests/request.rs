@@ -87,6 +87,11 @@ impl FromStr for Request {
         let headers: HeaderList = header_block.parse()?;
 
         let url = if url != "*" {
+            let url = urlencoding::decode(url)
+                .map_err(|_|
+                    FormatError
+                )?;
+
             match &headers.host {
                 Some(host) => {
                     let base = format!("http://{}/", host);

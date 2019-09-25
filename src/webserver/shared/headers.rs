@@ -85,7 +85,7 @@ impl FromStr for HeaderList {
             }else if req.len() != 2 {
                 return Err(InvalidFormatError(line.into()));
             }else{
-                let verb = dbg!(req[0]);
+                let verb = req[0];
                 let desc = req[1];
 
                 match verb.to_lowercase().as_str() {

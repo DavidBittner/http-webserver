@@ -30,7 +30,7 @@ lazy_static::lazy_static! {
 fn main() -> io::Result<()> {
     use std::collections::HashMap;
 
-    pretty_env_logger::init();
+    pretty_env_logger::init_custom_env("SERV_LOG");
 
     trace!(
         "initialized with config: \n{:#?}\n",
