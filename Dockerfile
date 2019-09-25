@@ -7,8 +7,11 @@ ENV server_root /tmp/
 
 RUN mkdir -p ${server_root}
 ADD ${test_url} ${server_root}/test_files.tar.gz
-RUN tar -xvf ${server_root}/test_files.tar.gz
+RUN cd ${server_root} && tar -xf ${server_root}/test_files.tar.gz
 RUN rm ${server_root}/test_files.tar.gz
+
+RUN apt -y update
+RUN apt -y install tree
 RUN tree ${server_root}
 
 EXPOSE  ${listen_port}
