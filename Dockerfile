@@ -9,6 +9,7 @@ RUN mkdir -p ${server_root}
 ADD ${test_url} ${server_root}/test_files.tar.gz
 RUN tar -xvf ${server_root}/test_files.tar.gz
 RUN rm ${server_root}/test_files.tar.gz
+RUN tree ${server_root}
 
 EXPOSE  ${listen_port}
 WORKDIR ${server_home}
