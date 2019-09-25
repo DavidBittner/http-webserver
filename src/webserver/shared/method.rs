@@ -4,6 +4,9 @@ pub enum Method {
     Head,
     Options,
     Trace,
+    Put,
+    Post,
+    Delete
 }
 
 impl Default for Method {
@@ -36,6 +39,9 @@ impl FromStr for Method {
             "HEAD"    => Ok(Method::Head),
             "OPTIONS" => Ok(Method::Options),
             "TRACE"   => Ok(Method::Trace),
+            "PUT"     => Ok(Method::Put),
+            "POST"    => Ok(Method::Post),
+            "DELETE"  => Ok(Method::Delete),
             _         => Err(UnknownMethodError(String::from(s)))
         }
     }

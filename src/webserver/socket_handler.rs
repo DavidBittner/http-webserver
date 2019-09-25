@@ -95,7 +95,7 @@ impl SocketHandler {
                                 resp
                             },
                             _ =>{
-                                Response::not_found(resp_headers)
+                                Response::not_implemented(resp_headers)
                             }
 
                         }

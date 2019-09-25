@@ -62,6 +62,14 @@ impl Response {
         }
     }
 
+    pub fn not_implemented(headers: HeaderList) -> Self {
+        Self {
+            code: StatusCode::NotImplemented,
+            headers: headers,
+            data: None
+        }
+    }
+
     pub fn file_response(path: &Path) -> Self {
         use std::fs;
 
