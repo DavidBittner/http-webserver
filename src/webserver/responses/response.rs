@@ -4,6 +4,7 @@ use num_traits::ToPrimitive;
 use mime::Mime;
 use std::path::Path;
 use crate::webserver::shared::*;
+use crate::webserver::requests::Request;
 use log::*;
 
 pub static SERVER_NAME: &'static str = "ScratchServer";
@@ -67,6 +68,42 @@ impl Response {
             code: StatusCode::NotImplemented,
             headers: headers,
             data: None
+        }
+    }
+
+    pub fn options_response(path: &Path) -> Self {
+        let mut methods = Vec::new();
+        methods.push(Method::Trace);
+        methods.push(Method::Options);
+
+        methods.push(Method::Get);
+        if !path.exists() {
+            methods.push(Method::Post);
+        }
+
+        let mut headers = HeaderList::response_headers();
+        headers.allow = Some(methods);
+
+        Self {
+            code: StatusCode::Ok,
+            headers: headers,
+            data: None
+        }
+    }
+
+    pub fn trace_response(req: &Request) -> Self {
+        let mut headers = HeaderList::response_headers();
+
+        let req_data = format!("{}", req);
+        let req_data: Vec<u8> = req_data.into();
+
+        headers.content_type = Some("message/http".parse().unwrap());
+        headers.content_len  = Some(req_data.len());
+
+        Self {
+            code: StatusCode::Ok,
+            headers: headers,
+            data: Some(req_data)
         }
     }
 

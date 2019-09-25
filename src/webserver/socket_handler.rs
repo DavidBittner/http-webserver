@@ -87,12 +87,18 @@ impl SocketHandler {
                     }else{
                         match req.method {
                             Method::Get => {
-                                self.get(&req)?
+                                self.get(&req)
                             },
                             Method::Head => {
-                                let mut resp = self.get(&req)?;
+                                let mut resp = self.get(&req);
                                 resp.data = None;
                                 resp
+                            },
+                            Method::Options => {
+                                self.options(&req)
+                            },
+                            Method::Trace => {
+                                self.trace(&req)
                             },
                             _ =>{
                                 Response::not_implemented(resp_headers)
@@ -138,27 +144,46 @@ impl SocketHandler {
             }
         }
 
-        let request: Request = buff.parse()?;
+        let request = buff.parse()?;
+
         trace!("received request from '{}'", self.addr);
 
         Ok(request)
     }
 
-    fn get(&mut self, req: &Request) -> io::Result<Response> {
-        let rel_path = if req.path.starts_with("/") {
-            req.path.strip_prefix("/")
+    fn sterilize_path(path: &PathBuf) -> PathBuf {
+        let rel_path = if path.starts_with("/") {
+            path.strip_prefix("/")
                 .unwrap()
         }else{
-            &req.path
+            &path
         };
 
-        let url: &Path = &ROOT
-            .join(rel_path);
+        ROOT
+            .join(rel_path)
+    }
+
+    fn get(&mut self, req: &Request) -> Response {
+        let url = SocketHandler::sterilize_path(&req.path);
 
         if url.starts_with(&*ROOT) {
-            Ok(Response::file_response(&url))
+            Response::file_response(&url)
         }else{
-            Ok(Response::forbidden(HeaderList::response_headers()))
+            Response::forbidden(HeaderList::response_headers())
         }
+    }
+
+    fn options(&mut self, req: &Request) -> Response {
+        let url = SocketHandler::sterilize_path(&req.path);
+
+        if url.starts_with(&*ROOT) {
+            Response::options_response(&url)
+        }else{
+            Response::forbidden(HeaderList::response_headers())
+        }
+    }
+
+    fn trace(&mut self, req: &Request) -> Response {
+        Response::trace_response(req)
     }
 }

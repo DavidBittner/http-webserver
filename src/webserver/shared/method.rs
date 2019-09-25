@@ -47,6 +47,23 @@ impl FromStr for Method {
     }
 }
 
+use std::fmt::{Display, Formatter};
+
+impl Display for Method {
+    fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
+        write!(fmt, "{}", 
+        match self {
+            Method::Get     => "GET",
+            Method::Head    => "HEAD",
+            Method::Post    => "POST",
+            Method::Put     => "PUT",
+            Method::Delete  => "DELETE",
+            Method::Options => "OPTIONS",
+            Method::Trace   => "TRACE"
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

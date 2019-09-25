@@ -1,6 +1,8 @@
 pub mod connection;
 pub use connection::*;
 
+use crate::webserver::shared::method::*;
+
 use chrono::{DateTime, Utc};
 use mime::*;
 
@@ -32,7 +34,10 @@ pub struct HeaderList {
     pub date:          Option<DateTime<Utc>>,
     pub content_type:  Option<Mime>,
     pub content_len:   Option<usize>,
-    pub last_modified: Option<DateTime<Utc>>
+    pub last_modified: Option<DateTime<Utc>>,
+    pub allow:         Option<Vec<Method>>,
+    pub user_agent:    Option<String>,
+    pub accept:        Option<String>
 }
 
 use std::str::FromStr;
@@ -70,15 +75,17 @@ impl FromStr for HeaderList {
         let mut ret: HeaderList = Default::default();
 
         for line in s.lines() {
-            let req: Vec<_> = s
+            let req: Vec<_> = line
                 .split_whitespace()
                 .take(2)
                 .collect();
 
-            if req.len() != 2 {
+            if line.trim().is_empty() {
+                break;
+            }else if req.len() != 2 {
                 return Err(InvalidFormatError(line.into()));
             }else{
-                let verb = req[0];
+                let verb = dbg!(req[0]);
                 let desc = req[1];
 
                 match verb.to_lowercase().as_str() {
@@ -147,7 +154,11 @@ impl FromStr for HeaderList {
 
                         ret.last_modified = Some(time);
                     },
-                    _       =>
+                    "user-agent:" =>
+                        ret.user_agent = Some(desc.into()),
+                    "accept:" =>
+                        ret.accept = Some(desc.into()),
+                    _ =>
                         return Err(UnknownHeaderError(verb.into()))
                 }
             }
@@ -221,6 +232,54 @@ impl Display for HeaderList {
             None =>
                 ()
         };
+
+        match &self.allow {
+            Some(allows) => {
+                let mut iter = allows.iter();
+                let first = iter.next();
+
+                match first {
+                    Some(first) => {
+                        write!(fmt, "Allow: ")?;
+                        write!(fmt, "{}", first)?;
+
+                        for opt in iter {
+                            write!(fmt, ", {}", opt)?;
+                        }
+                        write!(fmt, "\r\n")?;
+                    },
+                    None => ()
+                };
+
+            }
+            None =>
+                ()
+        };
+
+        match &self.host {
+            Some(host) =>
+                write!(fmt, "Host: {}\r\n", host)?,
+            None =>
+                ()
+        };
+
+        /*
+        match &self.accept {
+            Some(acc) =>
+                write!(fmt, "Accept: {}\r\n", acc)?,
+            None =>
+                ()
+        }
+        */
+
+        /*
+        match &self.user_agent {
+            Some(agent) =>
+                write!(fmt, "User-Agent: {}\r\n", agent)?,
+            None =>
+                ()
+        }
+        */
 
         Ok(())
     }

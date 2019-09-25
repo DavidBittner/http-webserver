@@ -8,9 +8,9 @@ use std::path::PathBuf;
 
 #[derive(Debug, PartialEq)]
 pub struct Request {
-    pub method: Method,
+    pub method:  Method,
     pub path:    PathBuf,
-    pub ver:    String,
+    pub ver:     String,
     pub headers: HeaderList
 }
 
@@ -19,6 +19,7 @@ pub enum RequestParsingError {
     MethodError(UnknownMethodError),
     UrlError(ParseError),
     HeaderError(HeaderError),
+    FormatError
 }
 
 impl Display for RequestParsingError {
@@ -28,7 +29,8 @@ impl Display for RequestParsingError {
         match self {
             MethodError(err) => write!(f, "{}", err),
             HeaderError(err) => write!(f, "{}", err),
-            UrlError(err)    => write!(f, "{}", err)
+            UrlError(err)    => write!(f, "{}", err),
+            FormatError      => write!(f, "could not understand the given request")
         }
     }
 }
@@ -57,17 +59,26 @@ impl FromStr for Request {
     type Err = RequestParsingError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use RequestParsingError::*;
+
         let mut lines: Vec<&str> = s.lines()
             .collect();
 
         let verbs: Vec<&str> = lines.remove(0)
             .split_whitespace()
             .collect();
-        assert_eq!(3, verbs.len());
 
-        let header_block: String = lines.iter()
-            .take_while(|line| !line.is_empty())
-            .fold(String::new(), |cur, new| format!("{}\r\n{}", cur, new));
+        if verbs.len() != 3 {
+            return Err(FormatError);
+        }
+
+        let mut header_block = String::new();
+        for line in lines.iter() {
+            if line.is_empty() {
+                break;
+            }
+            header_block.push_str(format!("{}\r\n", line).as_str());
+        }
 
         let method = verbs[0];
         let url    = verbs[1];
@@ -101,6 +112,20 @@ impl FromStr for Request {
             ver:  ver.into(),
             headers: headers
         })
+    }
+}
+
+impl Display for Request {
+    fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
+        write!(
+            fmt,
+            "{} {} {}\r\n",
+            self.method,
+            self.path.display(),
+            self.ver
+        )?;
+
+        write!(fmt, "{}", self.headers)
     }
 }
 
