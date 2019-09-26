@@ -54,7 +54,7 @@ impl Display for LogEntry {
         write!(
             fmt,
             "{} {} {} [{}] \"{}\" {} {}",
-            self.client_addr,
+            self.client_addr.ip(),
             ident,
             usrid,
             date_form,
