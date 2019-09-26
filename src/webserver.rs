@@ -3,8 +3,8 @@ mod socket_handler;
 pub mod responses;
 pub mod shared;
 pub mod requests;
+mod     clf;
 
-use crate::CONFIG;
 use std::sync::mpsc::channel;
 use std::net::TcpListener;
 use std::time::Duration;
@@ -14,10 +14,11 @@ use std::io::Write;
 
 use log::*;
 
+use crate::CONFIG;
 use socket_handler::SocketHandler;
 
 pub struct WebServer {
-    listener: TcpListener
+    listener: TcpListener,
 }
 
 impl WebServer {
@@ -34,13 +35,13 @@ impl WebServer {
 
         listener.set_nonblocking(true)?;
         Ok(WebServer{
-            listener: listener
+            listener: listener,
         })
     }
 
     pub fn listen(&mut self) -> io::Result<()> {
         let mut conn_map = HashMap::new();
-        let (tx, rx)     = channel();
+        let (t_tx, t_rx) = channel();
 
         loop {
             io::stdout().flush()?;
@@ -49,10 +50,10 @@ impl WebServer {
                     trace!("new connection received: '{}'", addr);
 
                     let handler = SocketHandler::new(
-                        stream
+                        stream,
                     )?;
 
-                    let other_tx = tx.clone();
+                    let other_tx = t_tx.clone();
                     let handle = std::thread::spawn(move || {
                         let res = handler.dispatch();
                         other_tx.send(addr)
@@ -76,7 +77,7 @@ impl WebServer {
                 }
             }
 
-            let del = rx.recv_timeout(Duration::from_millis(10));
+            let del = t_rx.recv_timeout(Duration::from_millis(10));
             match del {
                 Ok(addr) => {
                     let thread = conn_map.remove(&addr)
