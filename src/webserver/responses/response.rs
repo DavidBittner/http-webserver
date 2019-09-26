@@ -176,16 +176,26 @@ impl Response {
 fn map_extension<'a>(ext: &'a str) -> Mime {
     use mime::*;
 
-    match ext {
-        "txt" => TEXT_PLAIN,
-        "png" => IMAGE_PNG,
+    match ext.to_lowercase().as_str() {
         "js"  => APPLICATION_JAVASCRIPT,
 
         "htm"  |
         "html" => TEXT_HTML,
-        
         "css"  => TEXT_CSS,
+        "xml"  => TEXT_XML,
+        "txt"  => TEXT_PLAIN,
 
-        _ =>     APPLICATION_OCTET_STREAM
+        "jpg"  |
+        "jpeg" => IMAGE_JPEG,
+        "png"  => IMAGE_PNG,
+        "gif"  => IMAGE_GIF,
+        "pdf"  => APPLICATION_PDF,
+
+        "ppt"  |
+        "pptx" => "application/vnd.ms-powerpoint".parse().expect("failed to parse mime type"),
+        "doc"  |
+        "docx" => "application/vnd.ms-word".parse().expect("failed to parse mime type"),
+
+        _ => APPLICATION_OCTET_STREAM
     }
 }

@@ -13,7 +13,7 @@ use std::error::Error;
 use log::*;
 
 use crate::CONFIG;
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 
 type Result<T> = std::result::Result<T, SocketError>;
 
