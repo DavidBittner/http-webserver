@@ -71,15 +71,12 @@ impl Response {
         }
     }
 
-    pub fn options_response(path: &Path) -> Self {
+    pub fn options_response(_path: &Path) -> Self {
         let mut methods = Vec::new();
         methods.push(Method::Trace);
         methods.push(Method::Options);
-
         methods.push(Method::Get);
-        if !path.exists() {
-            methods.push(Method::Post);
-        }
+        methods.push(Method::Head);
 
         let mut headers = HeaderList::response_headers();
         headers.allow = Some(methods);
