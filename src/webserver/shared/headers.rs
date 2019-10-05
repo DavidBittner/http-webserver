@@ -77,21 +77,30 @@ impl FromStr for HeaderList {
         let mut ret: HeaderList = Default::default();
 
         for line in s.lines() {
-            let req: Vec<_> = line
-                .split_whitespace()
-                .take(2)
+            let mut req: Vec<_> = line
+                .splitn(2, ": ")
                 .collect();
 
             if line.trim().is_empty() {
                 break;
-            }else if req.len() != 2 {
+            }else if req.len() < 2 {
                 return Err(InvalidFormatError(line.into()));
             }else{
-                let verb = req[0];
-                let desc = req[1];
+                let verb = req.remove(0);
+                let desc = req.remove(0);
+                if req.len() != 0 {
+                    return Err(
+                        InvalidFormatError(
+                            format!(
+                                "remaining data in container: '{:?}'",
+                                req
+                            )
+                        )
+                    );
+                }
 
                 match verb.to_lowercase().as_str() {
-                    "connection:" => {
+                    "connection" => {
                         match desc.parse::<Connection>() {
                             Ok(opt) => ret.connection = Some(opt),
                             Err(_)  => return Err(UnrecognizedParameterError{
@@ -100,11 +109,11 @@ impl FromStr for HeaderList {
                             })
                         }
                     },
-                    "host:" =>
+                    "host" =>
                         ret.host = Some(desc.into()),
-                    "server:" =>
+                    "server" =>
                         ret.server = Some(desc.into()),
-                    "date:" => {
+                    "date" => {
                         let date: DateTime<Utc> = desc.parse()
                             .map_err(|_| {
                                 InvalidFormatError(
@@ -117,7 +126,7 @@ impl FromStr for HeaderList {
 
                         ret.date = Some(date);
                     },
-                    "content-type:" => {
+                    "content-type" => {
                         let typ: Mime = desc.parse()
                             .map_err(|_| {
                                 InvalidFormatError(
@@ -130,7 +139,7 @@ impl FromStr for HeaderList {
 
                         ret.content_type = Some(typ);
                     },
-                    "content-length:" => {
+                    "content-length" => {
                         let len: usize = desc.parse()
                             .map_err(|_| {
                                 InvalidFormatError(
@@ -143,7 +152,7 @@ impl FromStr for HeaderList {
                         
                         ret.content_len = Some(len);
                     },
-                    "last-modified:" => {
+                    "last-modified" => {
                         let time = desc.parse()
                             .map_err(|_| {
                                 InvalidFormatError(
@@ -156,9 +165,9 @@ impl FromStr for HeaderList {
 
                         ret.last_modified = Some(time);
                     },
-                    "user-agent:" =>
+                    "user-agent" =>
                         ret.user_agent = Some(desc.into()),
-                    "accept:" =>
+                    "accept" =>
                         ret.accept = Some(desc.into()),
                     "location:" =>
                         ret.location = Some(desc.into()),
@@ -267,23 +276,26 @@ impl Display for HeaderList {
                 ()
         };
 
-        /*
         match &self.accept {
             Some(acc) =>
                 write!(fmt, "Accept: {}\r\n", acc)?,
             None =>
                 ()
         }
-        */
 
-        /*
         match &self.user_agent {
             Some(agent) =>
                 write!(fmt, "User-Agent: {}\r\n", agent)?,
             None =>
                 ()
         }
-        */
+
+        match &self.location {
+            Some(loc) =>
+                write!(fmt, "Location: {}\r\n", loc.display())?,
+            None =>
+                ()
+        }
 
         Ok(())
     }
@@ -309,6 +321,6 @@ mod tests {
         assert!(as_struct.is_err());
         let er = as_struct.err().unwrap();
 
-        assert_eq!(er, HeaderError::UnknownHeaderError("Invalid:".into()));
+        assert_eq!(er, HeaderError::UnknownHeaderError("Invalid".into()));
     }
 }

@@ -24,6 +24,7 @@ lazy_static::lazy_static! {
 
         conf
             .merge(config::File::with_name("config.yml")).unwrap()
+            .merge(config::File::with_name("redirects.yml")).unwrap()
             .merge(config::Environment::with_prefix("SERV")).unwrap();
 
         conf

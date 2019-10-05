@@ -6,20 +6,21 @@ use super::shared::*;
 use std::time::Duration;
 use std::net::{TcpStream, SocketAddr};
 use std::io::{BufRead, BufReader};
-use std::io;
 
 use std::fmt::{Display, Formatter};
 use std::error::Error;
+use std::path::PathBuf;
+use std::sync::RwLock;
 
 use log::*;
 
 use crate::CONFIG;
-use std::path::{PathBuf};
+use super::clf::*;
 
 type Result<T> = std::result::Result<T, SocketError>;
 
 lazy_static::lazy_static! {
-    static ref ROOT: PathBuf = {
+    pub static ref ROOT: PathBuf = {
         lazy_static::initialize(&CONFIG);
 
         let root = CONFIG.get_str("root")
@@ -44,6 +45,10 @@ lazy_static::lazy_static! {
             .expect("write_timeout not defined, shouldn't happen.");
 
         Duration::from_millis(ms)
+    };
+
+    static ref LOG_LIST: RwLock<Vec<LogEntry>> = {
+        Default::default()
     };
 }
 
@@ -83,8 +88,9 @@ impl From<std::io::Error> for SocketError {
     }
 }
 
+use std::io::Result as ioResult;
 impl SocketHandler {
-    pub fn new(stream: TcpStream) -> io::Result<Self> {
+    pub fn new(stream: TcpStream) -> ioResult<Self> {
         stream.set_read_timeout(Some(*READ_TIMEOUT))?;
         stream.set_write_timeout(Some(*WRITE_TIMEOUT))?;
 
@@ -102,7 +108,7 @@ impl SocketHandler {
 
             let resp_headers = HeaderList::response_headers();
             //If the response failed to be parsed, send a bad request
-            let mut resp = match req {
+            let mut resp = match &req {
                 Ok(req) => {
                     if req.ver != "HTTP/1.1" {
                         Response::unsupported_version(resp_headers)
@@ -128,6 +134,7 @@ impl SocketHandler {
 
                         }
                     }
+
                 },
                 Err(err) => {
                     error!("{}", err);
@@ -138,6 +145,16 @@ impl SocketHandler {
             conn = resp.headers.connection
                 .get_or_insert(Connection::Close)
                 .clone();
+
+            match req {
+                Ok(req) => {
+                    let entry = LogEntry::new(&self.addr, &req, &resp);
+                    let mut list = LOG_LIST.write().unwrap();
+                    list.push(entry);
+                },
+                Err(_) =>
+                    ()
+            };
 
             resp.write_self(&mut self.stream)?;
             trace!("response written to '{}'", self.addr);
@@ -189,9 +206,36 @@ impl SocketHandler {
         let url = SocketHandler::sterilize_path(&req.path);
 
         if url.starts_with(&*ROOT) {
-            Response::file_response(&url)
+            let comp = ROOT.join(PathBuf::from(".well-known/access.log"));
+            if url.clone() == comp {
+                SocketHandler::log_response()
+            }else{
+                Response::file_response(&url)
+            }
         }else{
             Response::forbidden(HeaderList::response_headers())
+        }
+    }
+
+    fn log_response() -> Response {
+        let mut buff = String::new();
+        {
+            let log_list = LOG_LIST.read().unwrap();
+            for entry in log_list.iter() {
+                buff.push_str(&format!("{}\n", entry));
+            }
+        }
+
+        let buff: Vec<u8> = buff.into();
+
+        let mut headers      = HeaderList::response_headers();
+        headers.content_len  = Some(buff.len());
+        headers.content_type = Some(mime::TEXT_PLAIN);
+
+        Response {
+            code: StatusCode::Ok,
+            headers: headers,
+            data: Some(buff),
         }
     }
 

@@ -5,6 +5,7 @@ use mime::Mime;
 use std::path::Path;
 use crate::webserver::shared::*;
 use crate::webserver::requests::Request;
+use super::redirect::*;
 use log::*;
 
 pub static SERVER_NAME: &'static str = "ScratchServer";
@@ -71,15 +72,12 @@ impl Response {
         }
     }
 
-    pub fn options_response(path: &Path) -> Self {
+    pub fn options_response(_path: &Path) -> Self {
         let mut methods = Vec::new();
         methods.push(Method::Trace);
         methods.push(Method::Options);
-
         methods.push(Method::Get);
-        if !path.exists() {
-            methods.push(Method::Post);
-        }
+        methods.push(Method::Head);
 
         let mut headers = HeaderList::response_headers();
         headers.allow = Some(methods);
@@ -111,6 +109,24 @@ impl Response {
         use std::fs;
 
         let mut headers = HeaderList::response_headers();
+
+        for redir in REDIRECTS.iter() {
+            if redir.matches(path) {
+                return Response::redirect(
+                    path,
+                    redir.code
+                );
+            }
+        }
+
+        if path.is_dir() &&
+           !path.ends_with("/") {
+
+            return Response::redirect(
+                path,
+                StatusCode::MovedPermanently
+            );
+        }
 
         match fs::read(path) {
             Ok(buff) => {
@@ -156,7 +172,18 @@ impl Response {
         }
     }
 
-    pub fn redirect(path: &Path, code: StatusCode) -> Self {
+    fn redirect(path: &Path, code: StatusCode) -> Self {
+        use crate::webserver::socket_handler::ROOT;
+
+        let mut headers = HeaderList::response_headers();
+        let new_path = path.strip_prefix(&*ROOT).unwrap();
+
+        headers.location = Some(new_path.into());
+        Self {
+            code: code,
+            headers: headers,
+            data: None
+        }
     }
 
     pub fn write_self<'a, T: std::io::Write + Sized>(self, writer: &'a mut T) -> std::io::Result<()> {
@@ -179,16 +206,26 @@ impl Response {
 fn map_extension<'a>(ext: &'a str) -> Mime {
     use mime::*;
 
-    match ext {
-        "txt" => TEXT_PLAIN,
-        "png" => IMAGE_PNG,
+    match ext.to_lowercase().as_str() {
         "js"  => APPLICATION_JAVASCRIPT,
 
         "htm"  |
         "html" => TEXT_HTML,
-        
         "css"  => TEXT_CSS,
+        "xml"  => TEXT_XML,
+        "txt"  => TEXT_PLAIN,
 
-        _ =>     APPLICATION_OCTET_STREAM
+        "jpg"  |
+        "jpeg" => IMAGE_JPEG,
+        "png"  => IMAGE_PNG,
+        "gif"  => IMAGE_GIF,
+        "pdf"  => APPLICATION_PDF,
+
+        "ppt"  |
+        "pptx" => "application/vnd.ms-powerpoint".parse().expect("failed to parse mime type"),
+        "doc"  |
+        "docx" => "application/vnd.ms-word".parse().expect("failed to parse mime type"),
+
+        _ => APPLICATION_OCTET_STREAM
     }
 }

@@ -1,6 +1,6 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
-#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq)]
+#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, Clone, Copy)]
 pub enum StatusCode {
     Ok                  = 200,
     MovedPermanently    = 301,
