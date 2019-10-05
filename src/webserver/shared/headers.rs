@@ -4,6 +4,7 @@ pub use connection::*;
 use crate::webserver::shared::method::*;
 
 use chrono::{DateTime, Utc};
+use std::path::PathBuf;
 use mime::*;
 
 /// This module simple contains the header structure as well as parsing code.
@@ -37,7 +38,8 @@ pub struct HeaderList {
     pub last_modified: Option<DateTime<Utc>>,
     pub allow:         Option<Vec<Method>>,
     pub user_agent:    Option<String>,
-    pub accept:        Option<String>
+    pub accept:        Option<String>,
+    pub location:      Option<PathBuf>
 }
 
 use std::str::FromStr;
@@ -158,6 +160,8 @@ impl FromStr for HeaderList {
                         ret.user_agent = Some(desc.into()),
                     "accept:" =>
                         ret.accept = Some(desc.into()),
+                    "location:" =>
+                        ret.location = Some(desc.into()),
                     _ =>
                         return Err(UnknownHeaderError(verb.into()))
                 }

@@ -12,6 +12,9 @@ lazy_static::lazy_static! {
         conf.set_default("port", 8080).unwrap();
         conf.set_default("addr", "0.0.0.0").unwrap();
 
+        conf.set_default("read_timeout", 5000).unwrap();
+        conf.set_default("write_timeout", 5000).unwrap();
+
         let root = std::env::current_dir();
         let root = root
             .unwrap()

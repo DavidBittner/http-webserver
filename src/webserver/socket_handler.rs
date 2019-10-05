@@ -3,6 +3,7 @@ use super::responses::*;
 use super::shared::headers::*;
 use super::shared::*;
 
+use std::time::Duration;
 use std::net::{TcpStream, SocketAddr};
 use std::io::{BufRead, BufReader};
 use std::io;
@@ -13,7 +14,7 @@ use std::error::Error;
 use log::*;
 
 use crate::CONFIG;
-use std::path::{PathBuf, Path};
+use std::path::{PathBuf};
 
 type Result<T> = std::result::Result<T, SocketError>;
 
@@ -25,6 +26,24 @@ lazy_static::lazy_static! {
             .expect("root not defined (shouldn't happen)");
 
         PathBuf::from(root)
+    };
+
+    static ref READ_TIMEOUT: Duration = {
+        lazy_static::initialize(&CONFIG);
+
+        let ms: u64 = CONFIG.get("read_timeout")
+            .expect("read_timeout not defined, shouldn't happen.");
+
+        Duration::from_millis(ms)
+    };
+
+    static ref WRITE_TIMEOUT: Duration = {
+        lazy_static::initialize(&CONFIG);
+
+        let ms: u64 = CONFIG.get("write_timeout")
+            .expect("write_timeout not defined, shouldn't happen.");
+
+        Duration::from_millis(ms)
     };
 }
 
@@ -66,6 +85,9 @@ impl From<std::io::Error> for SocketError {
 
 impl SocketHandler {
     pub fn new(stream: TcpStream) -> io::Result<Self> {
+        stream.set_read_timeout(Some(*READ_TIMEOUT))?;
+        stream.set_write_timeout(Some(*WRITE_TIMEOUT))?;
+
         Ok(SocketHandler {
             addr:   stream.peer_addr()?,
             stream: stream,

@@ -156,6 +156,9 @@ impl Response {
         }
     }
 
+    pub fn redirect(path: &Path, code: StatusCode) -> Self {
+    }
+
     pub fn write_self<'a, T: std::io::Write + Sized>(self, writer: &'a mut T) -> std::io::Result<()> {
         let num = self.code.to_u16()
             .unwrap_or(0);
