@@ -39,7 +39,7 @@ pub struct HeaderList {
     pub allow:         Option<Vec<Method>>,
     pub user_agent:    Option<String>,
     pub accept:        Option<String>,
-    pub location:      Option<PathBuf>
+    pub location:      Option<String>
 }
 
 use std::str::FromStr;
@@ -292,7 +292,7 @@ impl Display for HeaderList {
 
         match &self.location {
             Some(loc) =>
-                write!(fmt, "Location: {}\r\n", loc.display())?,
+                write!(fmt, "Location: {}\r\n", loc)?,
             None =>
                 ()
         }

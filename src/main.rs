@@ -38,11 +38,14 @@ fn main() -> io::Result<()> {
 
     trace!(
         "initialized with config: \n{:#?}\n",
-        CONFIG.clone().try_into::<HashMap<String, String>>().unwrap()
+        CONFIG
+            .clone()
+            .try_into::<HashMap<String, config::Value>>()
+            .unwrap()
     );
 
     let mut server = WebServer::new()?;
-    server.listen()?;
 
+    server.listen()?;
     Ok(())
 }

@@ -10,8 +10,8 @@ lazy_static::lazy_static! {
     pub static ref REDIRECTS: Vec<Redirect> = {
         lazy_static::initialize(&CONFIG);
 
-        let content: Vec<config::Value> = 
-            CONFIG.get_array("redirects")
+        let content: Vec<config::Value> = CONFIG
+            .get_array("redirects")
             .expect("couldn't find redirects in config structure");
 
         let content: Vec<TempRedirect> = content
@@ -26,10 +26,13 @@ lazy_static::lazy_static! {
             .into_iter()
             .map(|conf| {
                 Redirect {
-                    regex: Regex::new(&conf.regex)
+                    regex:
+                        Regex::new(&conf.regex)
                         .expect("invalid regex"),
-                    path:  PathBuf::from(conf.url),
-                    code:  FromPrimitive::from_u32(conf.code)
+                    path:
+                        PathBuf::from(conf.url),
+                    code:
+                        FromPrimitive::from_u32(conf.code)
                         .unwrap_or(StatusCode::Unknown)
                 }
             })

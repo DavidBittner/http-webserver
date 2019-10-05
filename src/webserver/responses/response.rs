@@ -2,7 +2,7 @@ use super::status_code::StatusCode;
 use num_traits::ToPrimitive;
 
 use mime::Mime;
-use std::path::Path;
+use std::path::{Path};
 use crate::webserver::shared::*;
 use crate::webserver::requests::Request;
 use super::redirect::*;
@@ -120,10 +120,9 @@ impl Response {
         }
 
         if path.is_dir() &&
-           !path.ends_with("/") {
-
+          !path.ends_with("/") {
             return Response::redirect(
-                path,
+                &path,
                 StatusCode::MovedPermanently
             );
         }
@@ -176,9 +175,10 @@ impl Response {
         use crate::webserver::socket_handler::ROOT;
 
         let mut headers = HeaderList::response_headers();
-        let new_path = path.strip_prefix(&*ROOT).unwrap();
+        let new_path = path.strip_prefix(&*ROOT)
+            .unwrap_or(path);
 
-        headers.location = Some(new_path.into());
+        headers.location = Some(format!("/{}/", new_path.display()));
         Self {
             code: code,
             headers: headers,
