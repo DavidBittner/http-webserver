@@ -12,6 +12,9 @@ lazy_static::lazy_static! {
         conf.set_default("port", 8080).unwrap();
         conf.set_default("addr", "0.0.0.0").unwrap();
 
+        conf.set_default("read_timeout", 5000).unwrap();
+        conf.set_default("write_timeout", 5000).unwrap();
+
         let root = std::env::current_dir();
         let root = root
             .unwrap()
@@ -21,6 +24,7 @@ lazy_static::lazy_static! {
 
         conf
             .merge(config::File::with_name("config.yml")).unwrap()
+            .merge(config::File::with_name("redirects.yml")).unwrap()
             .merge(config::Environment::with_prefix("SERV")).unwrap();
 
         conf
@@ -34,11 +38,14 @@ fn main() -> io::Result<()> {
 
     trace!(
         "initialized with config: \n{:#?}\n",
-        CONFIG.clone().try_into::<HashMap<String, String>>().unwrap()
+        CONFIG
+            .clone()
+            .try_into::<HashMap<String, config::Value>>()
+            .unwrap()
     );
 
     let mut server = WebServer::new()?;
-    server.listen()?;
 
+    server.listen()?;
     Ok(())
 }

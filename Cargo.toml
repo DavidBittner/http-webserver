@@ -19,3 +19,5 @@ num-derive = "0.2.5"
 
 url         = "2.1.0"
 urlencoding = "1.0.0"
+
+regex = "1"

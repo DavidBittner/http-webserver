@@ -3,6 +3,7 @@ use super::responses::*;
 use super::shared::headers::*;
 use super::shared::*;
 
+use std::time::Duration;
 use std::net::{TcpStream, SocketAddr};
 use std::io::{BufRead, BufReader};
 
@@ -16,22 +17,38 @@ use log::*;
 use crate::CONFIG;
 use super::clf::*;
 
-lazy_static::lazy_static! {
-    static ref LOG_LIST: RwLock<Vec<LogEntry>> = {
-        Default::default()
-    };
-}
-
 type Result<T> = std::result::Result<T, SocketError>;
 
 lazy_static::lazy_static! {
-    static ref ROOT: PathBuf = {
+    pub static ref ROOT: PathBuf = {
         lazy_static::initialize(&CONFIG);
 
         let root = CONFIG.get_str("root")
             .expect("root not defined (shouldn't happen)");
 
         PathBuf::from(root)
+    };
+
+    static ref READ_TIMEOUT: Duration = {
+        lazy_static::initialize(&CONFIG);
+
+        let ms: u64 = CONFIG.get("read_timeout")
+            .expect("read_timeout not defined, shouldn't happen.");
+
+        Duration::from_millis(ms)
+    };
+
+    static ref WRITE_TIMEOUT: Duration = {
+        lazy_static::initialize(&CONFIG);
+
+        let ms: u64 = CONFIG.get("write_timeout")
+            .expect("write_timeout not defined, shouldn't happen.");
+
+        Duration::from_millis(ms)
+    };
+
+    static ref LOG_LIST: RwLock<Vec<LogEntry>> = {
+        Default::default()
     };
 }
 
@@ -74,6 +91,9 @@ impl From<std::io::Error> for SocketError {
 use std::io::Result as ioResult;
 impl SocketHandler {
     pub fn new(stream: TcpStream) -> ioResult<Self> {
+        stream.set_read_timeout(Some(*READ_TIMEOUT))?;
+        stream.set_write_timeout(Some(*WRITE_TIMEOUT))?;
+
         Ok(SocketHandler {
             addr:   stream.peer_addr()?,
             stream: stream,

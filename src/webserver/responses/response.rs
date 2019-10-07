@@ -2,9 +2,10 @@ use super::status_code::StatusCode;
 use num_traits::ToPrimitive;
 
 use mime::Mime;
-use std::path::Path;
+use std::path::{Path};
 use crate::webserver::shared::*;
 use crate::webserver::requests::Request;
+use super::redirect::*;
 use log::*;
 
 pub static SERVER_NAME: &'static str = "ScratchServer";
@@ -109,6 +110,23 @@ impl Response {
 
         let mut headers = HeaderList::response_headers();
 
+        for redir in REDIRECTS.iter() {
+            if redir.matches(path) {
+                return Response::redirect(
+                    path,
+                    redir.code
+                );
+            }
+        }
+
+        if path.is_dir() &&
+          !path.ends_with("/") {
+            return Response::redirect(
+                &path,
+                StatusCode::MovedPermanently
+            );
+        }
+
         match fs::read(path) {
             Ok(buff) => {
                 let code = StatusCode::Ok;
@@ -150,6 +168,21 @@ impl Response {
                 error!("error reading file '{}' to string: '{}'", path.display(), err);
                 Response::not_found(headers)
             }
+        }
+    }
+
+    fn redirect(path: &Path, code: StatusCode) -> Self {
+        use crate::webserver::socket_handler::ROOT;
+
+        let mut headers = HeaderList::response_headers();
+        let new_path = path.strip_prefix(&*ROOT)
+            .unwrap_or(path);
+
+        headers.location = Some(format!("/{}/", new_path.display()));
+        Self {
+            code: code,
+            headers: headers,
+            data: None
         }
     }
 

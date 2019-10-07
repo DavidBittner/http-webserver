@@ -3,9 +3,13 @@ use num_derive::{FromPrimitive, ToPrimitive};
 #[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, Clone, Copy)]
 pub enum StatusCode {
     Ok                  = 200,
+    MovedPermanently    = 301,
+    Found               = 302,
+    NotModified         = 304,
     BadRequest          = 400,
     Forbidden           = 403,
     NotFound            = 404,
+    RequestTimeout      = 408,
     InternalServerError = 500,
     NotImplemented      = 501,
     VersionNotSupported = 505,
@@ -23,7 +27,12 @@ impl Display for StatusCode {
             InternalServerError => "Internal Server Error",
             VersionNotSupported => "HTTP Version Not Supported",
             BadRequest          => "Bad Request",
-            NotImplemented | _  => "Not Implemented",
+            NotImplemented      => "Not Implemented",
+            MovedPermanently    => "Moved Permanently",
+            Found               => "Found",
+            NotModified         => "Not Modified",
+            RequestTimeout      => "Request Timeout",
+            Unknown             => panic!("shouldn't be here")
         };
 
         write!(fmt, "{}", wr)
