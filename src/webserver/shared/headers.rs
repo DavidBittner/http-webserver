@@ -4,7 +4,6 @@ pub use connection::*;
 use crate::webserver::shared::method::*;
 
 use chrono::{DateTime, Utc};
-use std::path::PathBuf;
 use mime::*;
 
 /// This module simple contains the header structure as well as parsing code.
@@ -18,7 +17,8 @@ use mime::*;
 ///     as_struct.unwrap(),
 ///     HeaderList{
 ///         connection: Some(Connection::Close),
-///         host: None
+///         host: None,
+///         .. Default::default()
 ///     }
 /// );
 /// ```
@@ -29,17 +29,20 @@ use mime::*;
 #[derive(Debug, PartialEq, Default)]
 pub struct HeaderList {
     ///The connection status after this request.
-    pub connection:    Option<Connection>,
-    pub host:          Option<String>,
-    pub server:        Option<String>,
-    pub date:          Option<DateTime<Utc>>,
-    pub content_type:  Option<Mime>,
-    pub content_len:   Option<usize>,
-    pub last_modified: Option<DateTime<Utc>>,
-    pub allow:         Option<Vec<Method>>,
-    pub user_agent:    Option<String>,
-    pub accept:        Option<String>,
-    pub location:      Option<String>
+    pub connection:      Option<Connection>,
+    pub host:            Option<String>,
+    pub server:          Option<String>,
+    pub date:            Option<DateTime<Utc>>,
+    pub content_type:    Option<Mime>,
+    pub content_len:     Option<usize>,
+    pub last_modified:   Option<DateTime<Utc>>,
+    pub allow:           Option<Vec<Method>>,
+    pub user_agent:      Option<String>,
+    pub accept:          Option<String>,
+    pub location:        Option<String>,
+    pub if_modified:     Option<DateTime<Utc>>,
+    pub if_unmodified:   Option<DateTime<Utc>>,
+    pub if_match:        Option<String>,
 }
 
 use std::str::FromStr;
@@ -169,10 +172,39 @@ impl FromStr for HeaderList {
                         ret.user_agent = Some(desc.into()),
                     "accept" =>
                         ret.accept = Some(desc.into()),
-                    "location:" =>
+                    "location" =>
                         ret.location = Some(desc.into()),
-                    _ =>
-                        return Err(UnknownHeaderError(verb.into()))
+                    "if-modified-since" => {
+                        let time = desc.parse()
+                            .map_err(|_| {
+                                InvalidFormatError(
+                                    format!(
+                                        "invalid date format: '{}'",
+                                        desc
+                                    )
+                                )
+                            })?;
+
+                        ret.if_modified = Some(time);
+                    },
+                    "if-unmodified-since" => {
+                        let time = desc.parse()
+                            .map_err(|_| {
+                                InvalidFormatError(
+                                    format!(
+                                        "invalid date format: '{}'",
+                                        desc
+                                    )
+                                )
+                            })?;
+
+                        ret.if_unmodified = Some(time);
+                    },
+                    _ => {
+                        log::warn!("unrecognized header: '{}'", verb);
+                        //return Err(UnknownHeaderError(verb.into()))
+                        ()
+                    }
                 }
             }
         }
@@ -279,13 +311,6 @@ impl Display for HeaderList {
         match &self.accept {
             Some(acc) =>
                 write!(fmt, "Accept: {}\r\n", acc)?,
-            None =>
-                ()
-        }
-
-        match &self.user_agent {
-            Some(agent) =>
-                write!(fmt, "User-Agent: {}\r\n", agent)?,
             None =>
                 ()
         }

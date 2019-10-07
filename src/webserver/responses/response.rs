@@ -1,14 +1,30 @@
-use super::status_code::StatusCode;
+mod templates;
+use templates::*;
+
 use num_traits::ToPrimitive;
 
 use mime::Mime;
 use std::path::{Path};
+use log::*;
+use tera::Tera;
+
 use crate::webserver::shared::*;
 use crate::webserver::requests::Request;
+use super::status_code::StatusCode;
 use super::redirect::*;
-use log::*;
 
-pub static SERVER_NAME: &'static str = "ScratchServer";
+lazy_static::lazy_static!{
+    static ref TERA: Tera = {
+        use crate::CONFIG;
+        use tera::compile_templates;
+
+        lazy_static::initialize(&CONFIG);
+
+        compile_templates!(&CONFIG.get_str("templates").unwrap())
+    };
+}
+
+pub static SERVER_NAME: &'static str = "Ruserv";
 pub static SERVER_VERS: &'static str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, PartialEq)]
@@ -19,57 +35,74 @@ pub struct Response {
 }
 
 impl Response {
-    pub fn not_found(mut headers: HeaderList) -> Self {
-        headers.content_len = Some(0);
-        Self {
-            code: StatusCode::NotFound,
-            headers: headers,
-            data: None
+    fn error(code: StatusCode, desc: &str) -> Self {
+        let mut headers = HeaderList::response_headers();
+        let holder  = ErrorTemplate::new(code, desc);
+        let data    = TERA.render("error.html", &holder);
+
+        match data {
+            Ok(string) => {
+                let data: Vec<_> = string.into();
+                headers.content_len  = Some(data.len());
+                headers.content_type = Some("text/html"
+                    .parse()
+                    .unwrap());
+
+                Self {
+                    code: code,
+                    headers: headers,
+                    data: Some(data)
+                }
+            },
+            Err(_) => {
+                Response::error(
+                    StatusCode::InternalServerError,
+                    "Something went wrong internally. Sorry!"
+                )
+            }
         }
     }
 
-    pub fn internal_error(mut headers: HeaderList) -> Self {
-        headers.content_len = None;
-        headers.content_type = None;
-        Self {
-            code: StatusCode::InternalServerError,
-            headers: headers,
-            data: None
-        }
+    pub fn not_found() -> Self {
+        Response::error(
+            StatusCode::NotFound,
+            "The file requested could not be found."
+        )
     }
 
-    pub fn forbidden(mut headers: HeaderList) -> Self {
-        headers.content_len = None;
-        headers.content_type = None;
-        Self {
-            code: StatusCode::Forbidden,
-            headers: headers,
-            data: None
-        }
+    pub fn internal_error() -> Self {
+        Response::error(
+            StatusCode::InternalServerError,
+            "An error occurred on our end. Sorry!"
+        )
     }
 
-    pub fn unsupported_version(headers: HeaderList) -> Self {
-        Self {
-            code: StatusCode::VersionNotSupported,
-            headers: headers,
-            data: None
-        }
+    pub fn forbidden() -> Self {
+        Response::error(
+            StatusCode::Forbidden,
+            "You do not have permission to request that resource."
+        )
     }
 
-    pub fn bad_request(headers: HeaderList) -> Self {
-        Self {
-            code: StatusCode::BadRequest,
-            headers: headers,
-            data: None
-        }
+    pub fn unsupported_version() -> Self {
+        Response::error(
+            StatusCode::VersionNotSupported,
+            "The requested HTTP version is not supported."
+        )
     }
 
-    pub fn not_implemented(headers: HeaderList) -> Self {
-        Self {
-            code: StatusCode::NotImplemented,
-            headers: headers,
-            data: None
-        }
+    pub fn bad_request() -> Self {
+        Response::error(
+            StatusCode::BadRequest,
+            "Your request could not be understood."
+        )
+    }
+
+    pub fn not_implemented() -> Self {
+        Response::error(
+            StatusCode::NotImplemented,
+            "The requested function or method is not implemented."
+        )
     }
 
     pub fn options_response(_path: &Path) -> Self {
@@ -119,12 +152,27 @@ impl Response {
             }
         }
 
-        if path.is_dir() &&
-          !path.ends_with("/") {
-            return Response::redirect(
-                &path,
-                StatusCode::MovedPermanently
-            );
+        //I know, this is an abomination. Thanks Rust for
+        //doing a weird amount of behind the scenes
+        //sterilizing on paths.
+        //Link: https://github.com/rust-lang/rust/issues/29008
+        //Horrible solution IMO as join removes trailing slash
+        //without warning, ends_with also does not consider
+        //trailing slashes.
+        if path.is_dir() {
+            let ends_with = path
+                .as_os_str()
+                .to_string_lossy()
+                .ends_with("/");
+
+            if ends_with {
+                return Response::directory_listing(path);
+            }else{
+                return Response::redirect(
+                    &path,
+                    StatusCode::MovedPermanently
+                );
+            }
         }
 
         match fs::read(path) {
@@ -141,13 +189,13 @@ impl Response {
                             },
                             Err(err) => {
                                 error!("error occured while retrieving modified time: '{}'", err);
-                                return Self::internal_error(headers);
+                                return Self::internal_error();
                             }
                         }
                     },
                     Err(err) => {
                         error!("error occurred retrieving metadata: '{}'", err);
-                        return Self::forbidden(headers);
+                        return Self::forbidden();
                     }
                 }
 
@@ -166,7 +214,45 @@ impl Response {
             },
             Err(err) => {
                 error!("error reading file '{}' to string: '{}'", path.display(), err);
-                Response::not_found(headers)
+                Response::not_found()
+            }
+        }
+    }
+
+    pub fn directory_listing(path: &Path) -> Self {
+        match DirectoryListing::new(path) {
+            Ok(dir) => {
+                let data = TERA.render("directory.html", &dir);
+                let mut headers = HeaderList::response_headers();
+
+                match data {
+                    Ok(string) => {
+                        let data: Vec<_> = string.into();
+                        headers.content_len  = Some(data.len());
+                        headers.content_type = Some("text/html"
+                            .parse()
+                            .unwrap());
+
+                        Self {
+                            code: StatusCode::Ok,
+                            headers: headers,
+                            data: Some(data)
+                        }
+                    },
+                    Err(_) => {
+                        Response::error(
+                            StatusCode::InternalServerError,
+                            "Something went wrong internally. Sorry!"
+                        )
+                    }
+                }
+            },
+            Err(err) => {
+                error!(
+                    "failed to generate directory listing: '{}'",
+                    err
+                );
+                Response::internal_error()
             }
         }
     }

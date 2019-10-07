@@ -1,15 +1,14 @@
 [package]
 name = "http-webserver"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["David Bittner <bittneradave@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.8.9"
-
-log = "0.4.8"
+log               = "0.4.8"
 pretty_env_logger = "0.3.1"
+
+serde = { version = "1.0.101", features = ["derive"] }
 
 config = { version = "0.9", features = ["yaml"] }
 lazy_static = "1.4.0"
@@ -20,8 +19,9 @@ chrono = {version = "0.4", features=["serde"]}
 num-traits = "0.2.8"
 num-derive = "0.2.5"
 
-url = "2.1.0"
-
+url         = "2.1.0"
 urlencoding = "1.0.0"
 
-regex = "1"
+regex = "1.0.0"
+
+tera = "*"
