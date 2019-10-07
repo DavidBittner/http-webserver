@@ -1,0 +1,12 @@
+<html>
+    <head></head>
+    <body>
+        <h1>{{ dir_path }}</h1>
+        {% for file in files %}
+        <div>
+            <a href={{file.path}}>{{file.name}}</a>
+            <p> - {{file.date}} - {{ file.size / 1000}}kb</p>
+        </div>
+        {% endfor %}
+    </body>
+</html>

@@ -11,6 +11,7 @@ lazy_static::lazy_static! {
         let mut conf = Config::default();
         conf.set_default("port", 8080).unwrap();
         conf.set_default("addr", "0.0.0.0").unwrap();
+        conf.set_default("templates", "templates/").unwrap();
 
         conf.set_default("read_timeout", 5000).unwrap();
         conf.set_default("write_timeout", 5000).unwrap();
@@ -24,7 +25,6 @@ lazy_static::lazy_static! {
 
         conf
             .merge(config::File::with_name("config.yml")).unwrap()
-            .merge(config::File::with_name("redirects.yml")).unwrap()
             .merge(config::Environment::with_prefix("SERV")).unwrap();
 
         conf

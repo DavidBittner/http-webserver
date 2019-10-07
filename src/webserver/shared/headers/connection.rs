@@ -5,7 +5,11 @@ use std::error::Error;
 #[derive(Debug, PartialEq, Clone)]
 pub enum Connection {
     ///Close the connection.
-    Close
+    Close,
+    ///Keep the connection running
+    LongLived,
+    ///Keep the connection running
+    KeepAlive
 }
 
 impl Default for Connection {
@@ -18,7 +22,11 @@ impl std::fmt::Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Connection::Close =>
-                write!(f, "close")
+                write!(f, "close"),
+            Connection::LongLived =>
+                write!(f, "long-lived"),
+            Connection::KeepAlive =>
+                write!(f, "keep-alive")
         }
     }
 }
@@ -40,7 +48,9 @@ impl FromStr for Connection {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "close" => Ok(Connection::Close),
+            "close"      => Ok(Connection::Close),
+            "long-lived" => Ok(Connection::LongLived),
+            "keep-alive" => Ok(Connection::KeepAlive),
             _       => Err(UnknownConnectionOption(String::from(s)))
         }
     }

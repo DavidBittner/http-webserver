@@ -22,7 +22,6 @@ RUN mkdir -p ${server_home}
 COPY src ${server_home}/src
 COPY Cargo.toml ${server_home}/
 COPY config.yml ${server_home}/
-COPY redirects.yml ${server_home}/
 
 RUN cd ${server_home}
 RUN cargo build --release

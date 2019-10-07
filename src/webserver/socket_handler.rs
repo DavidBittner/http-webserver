@@ -101,17 +101,13 @@ impl SocketHandler {
     }
 
     pub fn dispatch(mut self) -> Result<()> {
-        let conn;
-
         loop {
             let req = self.parse_request();
-
-            let resp_headers = HeaderList::response_headers();
             //If the response failed to be parsed, send a bad request
             let mut resp = match &req {
                 Ok(req) => {
                     if req.ver != "HTTP/1.1" {
-                        Response::unsupported_version(resp_headers)
+                        Response::unsupported_version()
                     }else{
                         match req.method {
                             Method::Get => {
@@ -129,7 +125,7 @@ impl SocketHandler {
                                 self.trace(&req)
                             },
                             _ =>{
-                                Response::not_implemented(resp_headers)
+                                Response::not_implemented()
                             }
 
                         }
@@ -138,13 +134,9 @@ impl SocketHandler {
                 },
                 Err(err) => {
                     error!("{}", err);
-                    Response::bad_request(resp_headers)
+                    Response::bad_request()
                 }
             };
-
-            conn = resp.headers.connection
-                .get_or_insert(Connection::Close)
-                .clone();
 
             match req {
                 Ok(req) => {
@@ -156,13 +148,18 @@ impl SocketHandler {
                     ()
             };
 
+            let conn = resp.headers.connection
+                .get_or_insert(Connection::Close)
+                .clone();
+
             resp.write_self(&mut self.stream)?;
             trace!("response written to '{}'", self.addr);
 
             match conn {
                 Connection::Close =>
-                    break
-            }
+                    break,
+                _ => ()
+            };
         }
 
         Ok(())
@@ -191,6 +188,10 @@ impl SocketHandler {
     }
 
     fn sterilize_path(path: &PathBuf) -> PathBuf {
+        let has_slash = path.as_os_str()
+            .to_string_lossy()
+            .ends_with("/");
+
         let rel_path = if path.starts_with("/") {
             path.strip_prefix("/")
                 .unwrap()
@@ -198,8 +199,14 @@ impl SocketHandler {
             &path
         };
 
-        ROOT
-            .join(rel_path)
+        if has_slash {
+            PathBuf::from(
+                format!("{}/", ROOT.join(rel_path).display())
+            )
+        }else{
+            ROOT
+                .join(rel_path)
+        }
     }
 
     fn get(&mut self, req: &Request) -> Response {
@@ -213,7 +220,7 @@ impl SocketHandler {
                 Response::file_response(&url)
             }
         }else{
-            Response::forbidden(HeaderList::response_headers())
+            Response::forbidden()
         }
     }
 
@@ -245,7 +252,7 @@ impl SocketHandler {
         if url.starts_with(&*ROOT) {
             Response::options_response(&url)
         }else{
-            Response::forbidden(HeaderList::response_headers())
+            Response::forbidden()
         }
     }
 
