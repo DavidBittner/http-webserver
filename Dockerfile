@@ -19,8 +19,8 @@ WORKDIR ${server_home}
 
 RUN mkdir -p ${server_home}
 
-COPY src ${server_home}/
-COPY templates ${server_home}/
+COPY src ${server_home}/src
+COPY templates ${server_home}/templates
 COPY Cargo.toml ${server_home}/
 COPY config.yml ${server_home}/
 
