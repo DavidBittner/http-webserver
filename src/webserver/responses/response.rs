@@ -274,11 +274,20 @@ impl Response {
         let new_path = path.strip_prefix(&*ROOT)
             .unwrap_or(path);
 
-        if format!("{}", path.display()).ends_with("/") {
+        let temp = if path.starts_with(&*ROOT) {
+            path.into()
+        }else{
+            ROOT.join(path
+                .strip_prefix("/")
+                .unwrap_or(path))
+        };
+
+        if temp.is_dir() {
             headers.location = Some(format!("/{}/", new_path.display()));
         }else{
-            headers.location = Some(format!("/{}", new_path.display()));
+            headers.location = Some(format!("/{}",  new_path.display()));
         }
+
         Self {
             code: code,
             headers: headers,
