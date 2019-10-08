@@ -145,8 +145,9 @@ impl Response {
 
         for redir in REDIRECTS.iter() {
             if redir.matches(path) {
+                let new_path = redir.subst(path);
                 return Response::redirect(
-                    path,
+                    &new_path,
                     redir.code
                 );
             }
