@@ -23,6 +23,17 @@ lazy_static::lazy_static!{
 
         compile_templates!(&CONFIG.get_str("templates").unwrap())
     };
+
+    static ref INDEXES: Vec<String> = {
+        CONFIG.get_array("indexes")
+            .unwrap()
+            .into_iter()
+            .map(|val| val
+                .try_into()
+                .expect("failed to get indexes")
+            )
+            .collect()
+    };
 }
 
 pub static SERVER_NAME: &'static str = "Ruserv";
@@ -143,7 +154,6 @@ impl Response {
         use std::fs;
 
         let mut headers = HeaderList::response_headers();
-
         for redir in REDIRECTS.iter() {
             let temp = path
                 .strip_prefix(
@@ -175,7 +185,20 @@ impl Response {
                 .to_string_lossy()
                 .ends_with("/");
 
+            use crate::webserver::socket_handler::ROOT;
             if ends_with {
+                let here = ROOT
+                    .join(path
+                        .strip_prefix("/")
+                        .unwrap_or(path));
+
+                for file in INDEXES.iter() {
+                    let temp = here.join(file);
+                    if temp.exists() {
+                        return Response::file_response(&temp);
+                    }
+                }
+
                 return Response::directory_listing(path);
             }else{
                 return Response::redirect(

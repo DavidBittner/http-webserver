@@ -7,6 +7,9 @@ addr:
 templates:
     'templates/*'
 
+indexes:
+    - index.html
+
 redirects:
     - regex: '^(.*)/coolcar.html$'
       url:   '$1/galaxie.html'

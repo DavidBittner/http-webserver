@@ -12,6 +12,7 @@ lazy_static::lazy_static! {
         conf.set_default("port", 8080).unwrap();
         conf.set_default("addr", "0.0.0.0").unwrap();
         conf.set_default("templates", "templates/").unwrap();
+        conf.set_default("indexes", vec![""; 0]).unwrap();
 
         conf.set_default("read_timeout", 5000).unwrap();
         conf.set_default("write_timeout", 5000).unwrap();
