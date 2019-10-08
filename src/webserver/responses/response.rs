@@ -8,6 +8,7 @@ use std::path::{Path};
 use log::*;
 use tera::Tera;
 
+use crate::CONFIG;
 use crate::webserver::shared::*;
 use crate::webserver::requests::Request;
 use super::status_code::StatusCode;
@@ -144,8 +145,16 @@ impl Response {
         let mut headers = HeaderList::response_headers();
 
         for redir in REDIRECTS.iter() {
-            if redir.matches(path) {
-                let new_path = redir.subst(path);
+            let temp = path
+                .strip_prefix(
+                    CONFIG
+                        .get_str("root")
+                        .unwrap()
+                )
+                .unwrap();
+
+            if redir.matches(&temp) {
+                let new_path = redir.subst(temp);
                 return Response::redirect(
                     &new_path,
                     redir.code
@@ -265,7 +274,11 @@ impl Response {
         let new_path = path.strip_prefix(&*ROOT)
             .unwrap_or(path);
 
-        headers.location = Some(format!("/{}/", new_path.display()));
+        if format!("{}", path.display()).ends_with("/") {
+            headers.location = Some(format!("/{}/", new_path.display()));
+        }else{
+            headers.location = Some(format!("/{}", new_path.display()));
+        }
         Self {
             code: code,
             headers: headers,

@@ -68,6 +68,7 @@ struct TempRedirect {
     code:  u32
 }
 
+#[derive(Debug)]
 pub struct Redirect {
     regexs:    Vec<Regex>,
     pub paths: Vec<Option<String>>,
@@ -76,6 +77,20 @@ pub struct Redirect {
 
 impl Redirect {
     pub fn matches(&self, path: &Path) -> bool {
+        let a_len = path
+            .iter()
+            .peekable()
+            .count();
+
+        let b_len = self.regexs
+            .iter()
+            .peekable()
+            .count();
+
+        if a_len != b_len {
+            return false;
+        }
+
         for (regex, comp) in self
             .regexs
             .iter()
