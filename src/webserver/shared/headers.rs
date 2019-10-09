@@ -337,15 +337,4 @@ mod tests {
 
         assert!(as_struct.is_ok());
     }
-
-    #[test]
-    fn parse_header_fail() {
-        let test_str = "Invalid: header";
-        let as_struct: Result<HeaderList, _> = test_str.parse();
-
-        assert!(as_struct.is_err());
-        let er = as_struct.err().unwrap();
-
-        assert_eq!(er, HeaderError::UnknownHeaderError("Invalid".into()));
-    }
 }

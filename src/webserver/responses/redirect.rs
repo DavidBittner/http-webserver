@@ -25,36 +25,12 @@ lazy_static::lazy_static! {
         content
             .into_iter()
             .map(|conf| {
-                let regex_url = PathBuf::from(conf.regex);
-                let redir_url = PathBuf::from(conf.url);
-
-                let mut regexes = Vec::new();
-                let mut paths   = Vec::new();
-
-                for (reg, compo) in regex_url
-                    .into_iter()
-                    .zip(redir_url.into_iter())
-                {
-                    regexes.push(Regex::new(&reg.to_string_lossy())
-                            .expect("failed to compile regex"));
-
-                    if compo
-                        .to_string_lossy()
-                        .starts_with("$")
-                    {
-                        paths.push(None);
-                    }else{
-                        paths.push(Some(compo
-                                .to_string_lossy()
-                                .into()));
-                    }
-                }
-
                 Redirect {
                     code: StatusCode::from_u32(conf.code)
                         .unwrap_or(StatusCode::Unknown),
-                    paths: paths,
-                    regexs: regexes
+                    subst_str: conf.url,
+                    regex: Regex::new(&conf.regex)
+                        .expect("failed to compile regex")
                 }
             })
             .collect()
@@ -70,55 +46,24 @@ struct TempRedirect {
 
 #[derive(Debug)]
 pub struct Redirect {
-    regexs:    Vec<Regex>,
-    pub paths: Vec<Option<String>>,
+    regex:     Regex,
+    subst_str: String,
     pub code:  StatusCode
 }
 
 impl Redirect {
     pub fn matches(&self, path: &Path) -> bool {
-        let a_len = path
-            .iter()
-            .peekable()
-            .count();
-
-        let b_len = self.regexs
-            .iter()
-            .peekable()
-            .count();
-
-        if a_len != b_len {
-            return false;
-        }
-
-        for (regex, comp) in self
-            .regexs
-            .iter()
-            .zip(path.iter())
-        {
-            if !regex.is_match(&comp.to_string_lossy()) {
-                return false;
-            }
-        }
-
-        true
+        self.regex.is_match(&path.to_string_lossy()) 
     }
 
     pub fn subst(&self, path: &Path) -> PathBuf {
-        let mut ret = PathBuf::new();
-        for (a, b) in path
-            .iter()
-            .zip(self.paths.iter())
-        {
-            ret.push(b
-                .clone()
-                .unwrap_or(a
-                    .to_string_lossy()
-                    .into()
-                )
-            );
-        }
+        let path: String = path
+            .to_string_lossy()
+            .into();
 
-        ret
+        PathBuf::from(
+            self.regex.replace(&path, self.subst_str.as_str())
+                .into_owned()
+        )
     }
 }
