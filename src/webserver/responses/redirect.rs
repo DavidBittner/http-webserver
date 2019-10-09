@@ -77,7 +77,6 @@ pub struct Redirect {
 
 impl Redirect {
     pub fn matches(&self, path: &Path) -> bool {
-        /*
         let a_len = path
             .iter()
             .peekable()
@@ -91,7 +90,6 @@ impl Redirect {
         if a_len != b_len {
             return false;
         }
-        */
 
         for (regex, comp) in self
             .regexs

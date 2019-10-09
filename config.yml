@@ -7,6 +7,9 @@ addr:
 templates:
     'templates/*'
 
+root:
+    '/home/david/Downloads/'
+
 indexes:
     - index.html
 
