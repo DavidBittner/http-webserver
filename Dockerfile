@@ -3,7 +3,7 @@ FROM rust:latest
 ENV listen_port 80
 ENV server_home /home/http-server
 ENV test_url https://raw.githubusercontent.com/ibnesayeed/webserver-tester/master/sample/cs531-test-files.tar.gz
-ENV server_root /tmp/
+ENV server_root /tmp
 
 RUN mkdir -p ${server_root}
 ADD ${test_url} ${server_root}/test_files.tar.gz

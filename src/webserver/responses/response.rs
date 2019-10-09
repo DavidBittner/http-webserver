@@ -163,8 +163,10 @@ impl Response {
                 )
                 .unwrap();
 
+            let temp = PathBuf::from(format!("/{}", temp.display()));
+
             if redir.matches(&temp) {
-                let new_path = redir.subst(temp);
+                let new_path = redir.subst(&temp);
                 return Response::redirect(
                     &new_path,
                     redir.code
@@ -314,9 +316,9 @@ impl Response {
         };
 
         if temp.is_dir() {
-            headers.location = Some(format!("/{}/", new_path.display()));
+            headers.location = Some(format!("{}/", new_path.display()));
         }else{
-            headers.location = Some(format!("/{}",  new_path.display()));
+            headers.location = Some(format!("{}",  new_path.display()));
         }
 
         Self {
