@@ -103,9 +103,13 @@ impl SocketHandler {
     pub fn dispatch(mut self) -> Result<()> {
         loop {
             let req = self.parse_request();
+            let mut conn = None;
+
             //If the response failed to be parsed, send a bad request
-            let mut resp = match &req {
+            let resp = match &req {
                 Ok(req) => {
+                    conn = req.headers.connection.clone();
+
                     if req.ver != "HTTP/1.1" {
                         Response::unsupported_version()
                     }else{
@@ -138,6 +142,7 @@ impl SocketHandler {
                 }
             };
 
+
             match req {
                 Ok(req) => {
                     let entry = LogEntry::new(&self.addr, &req, &resp);
@@ -148,14 +153,10 @@ impl SocketHandler {
                     ()
             };
 
-            let conn = resp.headers.connection
-                .get_or_insert(Connection::Close)
-                .clone();
-
             resp.write_self(&mut self.stream)?;
             trace!("response written to '{}'", self.addr);
 
-            match conn {
+            match conn.unwrap_or(Connection::Close) {
                 Connection::Close =>
                     break,
                 _ => ()
