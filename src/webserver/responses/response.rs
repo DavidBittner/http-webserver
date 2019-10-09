@@ -310,15 +310,19 @@ impl Response {
         let temp = if path.starts_with(&*ROOT) {
             path.into()
         }else{
-            ROOT.join(path
-                .strip_prefix("/")
-                .unwrap_or(path))
+            ROOT.join(
+                path
+                    .strip_prefix("/")
+                    .unwrap_or(path)
+            )
         };
 
         if temp.is_dir() {
-            headers.location = Some(format!("{}/", new_path.display()));
+            headers.location = Some(
+                PathBuf::from(format!("{}/", new_path.display()))
+            );
         }else{
-            headers.location = Some(format!("{}",  new_path.display()));
+            headers.location = Some(new_path.into());
         }
 
         Self {

@@ -5,6 +5,7 @@ use crate::webserver::shared::method::*;
 
 use chrono::{DateTime, Utc};
 use mime::*;
+use std::path::PathBuf;
 
 /// This module simple contains the header structure as well as parsing code.
 /// The usage is as follows: 
@@ -39,7 +40,7 @@ pub struct HeaderList {
     pub allow:           Option<Vec<Method>>,
     pub user_agent:      Option<String>,
     pub accept:          Option<String>,
-    pub location:        Option<String>,
+    pub location:        Option<PathBuf>,
     pub if_modified:     Option<DateTime<Utc>>,
     pub if_unmodified:   Option<DateTime<Utc>>,
     pub if_match:        Option<String>,
@@ -317,7 +318,7 @@ impl Display for HeaderList {
 
         match &self.location {
             Some(loc) =>
-                write!(fmt, "Location: {}\r\n", loc)?,
+                write!(fmt, "Location: /{}\r\n", loc.display())?,
             None =>
                 ()
         }
