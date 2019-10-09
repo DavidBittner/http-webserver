@@ -4,7 +4,7 @@ use templates::*;
 use num_traits::ToPrimitive;
 
 use mime::Mime;
-use std::path::{Path};
+use std::path::{Path, PathBuf};
 use log::*;
 use tera::Tera;
 
@@ -24,7 +24,7 @@ lazy_static::lazy_static!{
         compile_templates!(&CONFIG.get_str("templates").unwrap())
     };
 
-    static ref INDEXES: Vec<String> = {
+    static ref INDEXES: Vec<PathBuf> = {
         CONFIG.get_array("indexes")
             .unwrap()
             .into_iter()
@@ -185,17 +185,25 @@ impl Response {
                 .to_string_lossy()
                 .ends_with("/");
 
-            use crate::webserver::socket_handler::ROOT;
             if ends_with {
-                let here = ROOT
-                    .join(path
-                        .strip_prefix("/")
-                        .unwrap_or(path));
-
                 for file in INDEXES.iter() {
-                    let temp = here.join(file);
+                    let temp = path.join(file);
                     if temp.exists() {
-                        return Response::file_response(&temp);
+                        //Remove an excess slashes, make the
+                        //path pretty, we can do this because
+                        //we know the file exists.
+                        let canon = temp.canonicalize();
+                        match canon {
+                            Ok(path) => {
+                                return Response::file_response(
+                                    &path
+                                );
+                            },
+                            Err(err) => {
+                                error!("could not canonicalize: '{}'", err);
+                                return Response::internal_error();
+                            }
+                        }
                     }
                 }
 
@@ -354,9 +362,13 @@ fn map_extension<'a>(ext: &'a str) -> Mime {
         "pdf"  => APPLICATION_PDF,
 
         "ppt"  |
-        "pptx" => "application/vnd.ms-powerpoint".parse().expect("failed to parse mime type"),
+        "pptx" => "application/vnd.ms-powerpoint"
+                    .parse()
+                    .expect("failed to parse mime type"),
         "doc"  |
-        "docx" => "application/vnd.ms-word".parse().expect("failed to parse mime type"),
+        "docx" => "application/vnd.ms-word"
+                    .parse()
+                    .expect("failed to parse mime type"),
 
         _ => APPLICATION_OCTET_STREAM
     }
