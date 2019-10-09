@@ -156,7 +156,7 @@ impl SocketHandler {
             resp.write_self(&mut self.stream)?;
             trace!("response written to '{}'", self.addr);
 
-            match conn.unwrap_or(Connection::Close) {
+            match conn.unwrap_or(Connection::LongLived) {
                 Connection::Close =>
                     break,
                 _ => ()
