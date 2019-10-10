@@ -117,6 +117,13 @@ impl Response {
         )
     }
 
+    pub fn timed_out() -> Self {
+        Response::error(
+            StatusCode::RequestTimeout,
+            "The request timed out."
+        )
+    }
+
     pub fn options_response(_path: &Path) -> Self {
         let mut methods = Vec::new();
         methods.push(Method::Trace);

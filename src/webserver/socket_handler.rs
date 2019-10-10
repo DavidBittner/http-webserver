@@ -137,11 +137,29 @@ impl SocketHandler {
 
                 },
                 Err(err) => {
-                    error!("{}", err);
-                    Response::bad_request()
+                    use SocketError::*;
+                    match err {
+                        IoError(err) => {
+                            use std::io::ErrorKind::*;
+                            match err.kind() {
+                                WouldBlock => {
+                                    error!("request timed out: '{}'", err);
+                                    conn = Some(Connection::Close);
+                                    Response::timed_out()
+                                },
+                                _ => {
+                                    error!("io error occurred: '{}'", err);
+                                    Response::bad_request()
+                                }
+                            }
+                        },
+                        _ => {
+                            error!("{}", err);
+                            Response::bad_request()
+                        }
+                    }
                 }
             };
-
 
             match req {
                 Ok(req) => {
