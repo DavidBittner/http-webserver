@@ -4,6 +4,7 @@ pub use connection::*;
 use crate::webserver::shared::method::*;
 
 use chrono::{DateTime, Utc};
+use chrono::prelude::*;
 use mime::*;
 use std::path::PathBuf;
 
@@ -177,7 +178,10 @@ impl FromStr for HeaderList {
                     "location" =>
                         ret.location = Some(desc.into()),
                     "if-modified-since" => {
-                        let time = desc.parse()
+                        let time = Utc.datetime_from_str(
+                                desc.into(),
+                                "%a, %d %b %Y %T GMT"
+                            )
                             .map_err(|_| {
                                 InvalidFormatError(
                                     format!(
@@ -190,7 +194,10 @@ impl FromStr for HeaderList {
                         ret.if_modified = Some(time);
                     },
                     "if-unmodified-since" => {
-                        let time = desc.parse()
+                        let time = Utc.datetime_from_str(
+                                desc.into(),
+                                "%a, %d %b %Y %T GMT"
+                            )
                             .map_err(|_| {
                                 InvalidFormatError(
                                     format!(

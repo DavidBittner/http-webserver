@@ -27,7 +27,7 @@ pub fn file_etag(path: &Path) -> ioResult<String> {
         }
     }
 
-    Ok(format!("{:x}", hasher.finish()))
+    Ok(format!("\"{:x}\"", hasher.finish()))
 }
 
 pub fn dir_etag(path: &Path) -> ioResult<String> {
@@ -40,5 +40,5 @@ pub fn dir_etag(path: &Path) -> ioResult<String> {
     meta.len().hash(&mut hasher);
     //meta.created()?.hash(&mut hasher);
 
-    Ok(format!("{:x}", hasher.finish()))
+    Ok(format!("\"{:x}\"", hasher.finish()))
 }

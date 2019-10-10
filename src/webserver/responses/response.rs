@@ -165,11 +165,11 @@ impl Response {
         }
     }
 
-    pub fn precondition_failed(mut headers: HeaderList) -> Self {
+    pub fn precondition_failed() -> Self {
         Response::error(
             StatusCode::PreconditionFailed,
             "The supplied precondition failed.",
-            headers
+            HeaderList::response_headers()
         )
     }
 

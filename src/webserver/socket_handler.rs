@@ -273,7 +273,7 @@ impl SocketHandler {
                         match meta.modified() {
                             Ok(time) => {
                                 if sys_time < time {
-                                    return None;
+                                    Some(Response::precondition_failed())
                                 }else{
                                     return Some(
                                         Response::not_modified(full_path)
@@ -282,14 +282,17 @@ impl SocketHandler {
                             },
                             Err(err) => {
                                 warn!("couldn't retrieve last-modified date for file: '{}'", err);
-                                None
+                                Some(Response::precondition_failed())
 
                             }
                         }
                     },
                     Err(err) => {
-                        warn!("couldn't retrieve last-modified date for file: '{}'", err);
-                        None
+                        warn!(
+                            "couldn't retrieve metadata for file: '{}'",
+                            err
+                        );
+                        Some(Response::precondition_failed())
                     }
                 }
             },
@@ -307,7 +310,7 @@ impl SocketHandler {
                 if comp_etag == *etag {
                     Some(Response::not_modified(full_path))
                 }else{
-                    Some(Response::precondition_failed(HeaderList::response_headers()))
+                    Some(Response::precondition_failed())
                 }
             },
             None =>
