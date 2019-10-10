@@ -14,6 +14,8 @@ use crate::webserver::requests::Request;
 use super::status_code::StatusCode;
 use super::redirect::*;
 
+use std::io::Result as ioResult;
+
 lazy_static::lazy_static!{
     static ref TERA: Tera = {
         use crate::CONFIG;
@@ -47,8 +49,7 @@ pub struct Response {
 }
 
 impl Response {
-    fn error(code: StatusCode, desc: &str) -> Self {
-        let mut headers = HeaderList::response_headers();
+    fn error(code: StatusCode, desc: &str, mut headers: HeaderList) -> Self {
         let holder = ErrorTemplate::new(code, desc);
         let data   = TERA.render("error.html", &holder);
 
@@ -67,10 +68,7 @@ impl Response {
                 }
             },
             Err(_) => {
-                Response::error(
-                    StatusCode::InternalServerError,
-                    "Something went wrong internally. Sorry!"
-                )
+                Response::internal_error()
             }
         }
     }
@@ -78,49 +76,59 @@ impl Response {
     pub fn not_found() -> Self {
         Response::error(
             StatusCode::NotFound,
-            "The file requested could not be found."
+            "The file requested could not be found.",
+            HeaderList::response_headers()
         )
     }
 
     pub fn internal_error() -> Self {
         Response::error(
             StatusCode::InternalServerError,
-            "An error occurred on our end. Sorry!"
+            "An error occurred on our end. Sorry!",
+            HeaderList::response_headers()
         )
     }
 
     pub fn forbidden() -> Self {
         Response::error(
             StatusCode::Forbidden,
-            "You do not have permission to request that resource."
+            "You do not have permission to request that resource.",
+            HeaderList::response_headers()
         )
     }
 
     pub fn unsupported_version() -> Self {
         Response::error(
             StatusCode::VersionNotSupported,
-            "The requested HTTP version is not supported."
+            "The requested HTTP version is not supported.",
+            HeaderList::response_headers()
         )
     }
 
     pub fn bad_request() -> Self {
         Response::error(
             StatusCode::BadRequest,
-            "Your request could not be understood."
+            "Your request could not be understood.",
+            HeaderList::response_headers()
         )
     }
 
     pub fn not_implemented() -> Self {
         Response::error(
             StatusCode::NotImplemented,
-            "The requested function or method is not implemented."
+            "The requested function or method is not implemented.",
+            HeaderList::response_headers()
         )
     }
 
     pub fn timed_out() -> Self {
+        let mut headers = HeaderList::response_headers();
+        headers.connection = Some(Connection::Close);
+
         Response::error(
             StatusCode::RequestTimeout,
-            "The request timed out."
+            "The request timed out.",
+            headers
         )
     }
 
@@ -290,10 +298,7 @@ impl Response {
                         }
                     },
                     Err(_) => {
-                        Response::error(
-                            StatusCode::InternalServerError,
-                            "Something went wrong internally. Sorry!"
-                        )
+                        Response::internal_error()
                     }
                 }
             },
@@ -339,7 +344,10 @@ impl Response {
         }
     }
 
-    pub fn write_self<'a, T: std::io::Write + Sized>(mut self, writer: &'a mut T) -> std::io::Result<()> {
+    pub fn write_self<'a, T>(self, writer: &'a mut T) -> ioResult<()>
+    where
+        T: std::io::Write + Sized
+    {
         let num = self.code.to_u16()
             .unwrap_or(0);
 
