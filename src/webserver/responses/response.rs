@@ -49,8 +49,8 @@ pub struct Response {
 impl Response {
     fn error(code: StatusCode, desc: &str) -> Self {
         let mut headers = HeaderList::response_headers();
-        let holder  = ErrorTemplate::new(code, desc);
-        let data    = TERA.render("error.html", &holder);
+        let holder = ErrorTemplate::new(code, desc);
+        let data   = TERA.render("error.html", &holder);
 
         match data {
             Ok(string) => {
@@ -339,7 +339,7 @@ impl Response {
         }
     }
 
-    pub fn write_self<'a, T: std::io::Write + Sized>(self, writer: &'a mut T) -> std::io::Result<()> {
+    pub fn write_self<'a, T: std::io::Write + Sized>(mut self, writer: &'a mut T) -> std::io::Result<()> {
         let num = self.code.to_u16()
             .unwrap_or(0);
 

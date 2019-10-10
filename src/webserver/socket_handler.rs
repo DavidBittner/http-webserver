@@ -106,7 +106,7 @@ impl SocketHandler {
             let mut conn = None;
 
             //If the response failed to be parsed, send a bad request
-            let resp = match &req {
+            let mut resp = match &req {
                 Ok(req) => {
                     conn = req.headers.connection.clone();
 
@@ -144,7 +144,6 @@ impl SocketHandler {
                             match err.kind() {
                                 WouldBlock => {
                                     error!("request timed out: '{}'", err);
-                                    conn = Some(Connection::Close);
                                     Response::timed_out()
                                 },
                                 _ => {
@@ -171,6 +170,7 @@ impl SocketHandler {
                     ()
             };
 
+            resp.headers.connection.get_or_insert(Connection::LongLived);
             resp.write_self(&mut self.stream)?;
             trace!("response written to '{}'", self.addr);
 
