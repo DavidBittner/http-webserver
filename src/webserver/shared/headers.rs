@@ -181,33 +181,17 @@ impl FromStr for HeaderList {
                         let time = Utc.datetime_from_str(
                                 desc.into(),
                                 "%a, %d %b %Y %T GMT"
-                            )
-                            .map_err(|_| {
-                                InvalidFormatError(
-                                    format!(
-                                        "invalid date format: '{}'",
-                                        desc
-                                    )
-                                )
-                            })?;
+                            );
 
-                        ret.if_modified = Some(time);
+                        ret.if_modified = time.ok();
                     },
                     "if-unmodified-since" => {
                         let time = Utc.datetime_from_str(
                                 desc.into(),
                                 "%a, %d %b %Y %T GMT"
-                            )
-                            .map_err(|_| {
-                                InvalidFormatError(
-                                    format!(
-                                        "invalid date format: '{}'",
-                                        desc
-                                    )
-                                )
-                            })?;
+                            );
 
-                        ret.if_unmodified = Some(time);
+                        ret.if_unmodified = time.ok();
                     },
                     "etag" =>
                         ret.etag = Some(desc.into()),

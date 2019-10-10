@@ -177,11 +177,14 @@ impl SocketHandler {
                     ()
             };
 
-            resp.headers.connection.get_or_insert(Connection::LongLived);
+            let conn = resp.headers.connection
+                .get_or_insert(Connection::LongLived)
+                .clone();
+
             resp.write_self(&mut self.stream)?;
             trace!("response written to '{}'", self.addr);
 
-            match conn.unwrap_or(Connection::LongLived) {
+            match conn {
                 Connection::Close =>
                     break,
                 _ => ()
@@ -267,13 +270,13 @@ impl SocketHandler {
     fn check_modified_since(req: &Request, full_path: &Path) -> Option<Response> {
         match req.headers.if_modified {
             Some(date) => {
-                let sys_time: SystemTime = date.into();
+                let check_time: SystemTime = date.into();
                 match full_path.metadata() {
                     Ok(meta) => {
                         match meta.modified() {
                             Ok(time) => {
-                                if sys_time < time {
-                                    Some(Response::precondition_failed())
+                                if check_time < time {
+                                    None
                                 }else{
                                     return Some(
                                         Response::not_modified(full_path)
