@@ -44,7 +44,7 @@ pub struct HeaderList {
     pub if_modified:     Option<DateTime<Utc>>,
     pub if_unmodified:   Option<DateTime<Utc>>,
     pub if_match:        Option<String>,
-    pub etag:            Option<u64>
+    pub etag:            Option<String>
 }
 
 use std::str::FromStr;
@@ -202,6 +202,8 @@ impl FromStr for HeaderList {
 
                         ret.if_unmodified = Some(time);
                     },
+                    "etag" =>
+                        ret.etag = Some(desc.into()),
                     _ => {
                         log::warn!("unrecognized header: '{}'", verb);
                         //return Err(UnknownHeaderError(verb.into()))
@@ -327,6 +329,13 @@ impl Display for HeaderList {
         match &self.location {
             Some(loc) =>
                 write!(fmt, "Location: /{}\r\n", loc.display())?,
+            None =>
+                ()
+        }
+
+        match &self.etag {
+            Some(etag) =>
+                write!(fmt, "ETag: {}\r\n", etag)?,
             None =>
                 ()
         }

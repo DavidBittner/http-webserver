@@ -2,6 +2,7 @@ mod templates;
 use templates::*;
 
 use num_traits::ToPrimitive;
+use crate::webserver::socket_handler::etag::*;
 
 use mime::Mime;
 use std::path::{Path, PathBuf};
@@ -164,6 +165,14 @@ impl Response {
         }
     }
 
+    pub fn precondition_failed(mut headers: HeaderList) -> Self {
+        Response::error(
+            StatusCode::PreconditionFailed,
+            "The supplied precondition failed.",
+            headers
+        )
+    }
+
     pub fn options_response(_path: &Path) -> Self {
         let mut methods = Vec::new();
         methods.push(Method::Trace);
@@ -293,8 +302,20 @@ impl Response {
                     .unwrap_or(std::ffi::OsStr::new(""))
                     .to_string_lossy();
 
-                headers.content_len = Some(buff.len());
+                headers.content_len  = Some(buff.len());
                 headers.content_type = Some(map_extension(&ext));
+
+                let etag = file_etag(path);
+                match etag {
+                    Ok(etag) =>
+                        headers.etag = Some(etag),
+                    Err(err) =>
+                        warn!(
+                            "failed to generate etag for file '{}' err was: '{}'",
+                            path.display(),
+                            err
+                        )
+                }
 
                 Self {
                     code: code,
@@ -303,7 +324,11 @@ impl Response {
                 }
             },
             Err(err) => {
-                error!("error reading file '{}' to string: '{}'", path.display(), err);
+                error!(
+                    "error reading file '{}' to string: '{}'",
+                    path.display(),
+                    err
+                );
                 Response::not_found()
             }
         }
@@ -322,6 +347,14 @@ impl Response {
                         headers.content_type = Some("text/html"
                             .parse()
                             .unwrap());
+
+                        let etag = dir_etag(path);
+                        match etag {
+                            Ok(etag) =>
+                                headers.etag = Some(etag),
+                            Err(err) =>
+                                warn!("error generating etag for dir: '{}'", err)
+                        }
 
                         Self {
                             code: StatusCode::Ok,

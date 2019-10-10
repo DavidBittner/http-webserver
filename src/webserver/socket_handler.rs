@@ -1,4 +1,4 @@
-mod etag;
+pub mod etag;
 
 use super::requests::*;
 use super::responses::*;
@@ -6,7 +6,6 @@ use super::shared::headers::*;
 use super::shared::*;
 
 use std::time::{Duration, SystemTime};
-use chrono::{DateTime, Utc};
 use std::net::{TcpStream, SocketAddr};
 use std::io::{BufRead, BufReader};
 
@@ -64,6 +63,7 @@ pub struct SocketHandler {
 pub enum SocketError {
     IoError(std::io::Error),
     RequestError(RequestParsingError),
+    ConnectionClosed
 }
 
 impl Display for SocketError {
@@ -72,7 +72,8 @@ impl Display for SocketError {
 
         match self {
             IoError(err) => write!(f, "IoError: {}", err),
-            RequestError(err) => write!(f, "{}", err)
+            RequestError(err) => write!(f, "{}", err),
+            ConnectionClosed  => write!(f, "connection closed by user")
         }
     }
 }
@@ -155,6 +156,9 @@ impl SocketHandler {
                                 }
                             }
                         },
+                        ConnectionClosed => {
+                            return Ok(());
+                        },
                         _ => {
                             error!("{}", err);
                             Response::bad_request()
@@ -202,11 +206,18 @@ impl SocketHandler {
             }
         }
 
-        let request = buff.parse()?;
+        if buff.is_empty() {
+            use std::net::Shutdown;
+            self.stream.shutdown(Shutdown::Both)?;
+            Err(SocketError::ConnectionClosed)
+        }else{
+            trace!("received request from '{}'", self.addr);
 
-        trace!("received request from '{}'", self.addr);
+            let request = buff.parse()?;
+            Ok(request)
+        }
 
-        Ok(request)
+
     }
 
     fn sterilize_path(path: &PathBuf) -> PathBuf {
@@ -296,7 +307,7 @@ impl SocketHandler {
                 if comp_etag == *etag {
                     Some(Response::not_modified(full_path))
                 }else{
-                    None
+                    Some(Response::precondition_failed(HeaderList::response_headers()))
                 }
             },
             None =>

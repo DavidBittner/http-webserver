@@ -14,7 +14,7 @@ pub fn file_etag(path: &Path) -> ioResult<String> {
     full_path.hash(&mut hasher);
     meta.modified()?.hash(&mut hasher);
     meta.len().hash(&mut hasher);
-    meta.created()?.hash(&mut hasher);
+    //meta.created()?.hash(&mut hasher);
 
     let mut file = File::open(&full_path)?;
     let mut buffer = vec![0; 2048];
@@ -27,6 +27,18 @@ pub fn file_etag(path: &Path) -> ioResult<String> {
         }
     }
 
-    let hash: u64 = hasher.finish();
-    Ok(format!("{:x}", hash))
+    Ok(format!("{:x}", hasher.finish()))
+}
+
+pub fn dir_etag(path: &Path) -> ioResult<String> {
+    let full_path = path.canonicalize()?;
+    let meta      = std::fs::metadata(path)?; 
+
+    let mut hasher = DefaultHasher::default();
+    full_path.hash(&mut hasher);
+    meta.modified()?.hash(&mut hasher);
+    meta.len().hash(&mut hasher);
+    //meta.created()?.hash(&mut hasher);
+
+    Ok(format!("{:x}", hasher.finish()))
 }

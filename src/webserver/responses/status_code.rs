@@ -10,6 +10,7 @@ pub enum StatusCode {
     Forbidden           = 403,
     NotFound            = 404,
     RequestTimeout      = 408,
+    PreconditionFailed  = 412,
     InternalServerError = 500,
     NotImplemented      = 501,
     VersionNotSupported = 505,
@@ -32,6 +33,7 @@ impl Display for StatusCode {
             Found               => "Found",
             NotModified         => "Not Modified",
             RequestTimeout      => "Request Timeout",
+            PreconditionFailed  => "Precondition Failed",
             Unknown             => panic!("shouldn't be here")
         };
 
