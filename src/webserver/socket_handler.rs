@@ -1,15 +1,18 @@
+mod etag;
+
 use super::requests::*;
 use super::responses::*;
 use super::shared::headers::*;
 use super::shared::*;
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
+use chrono::{DateTime, Utc};
 use std::net::{TcpStream, SocketAddr};
 use std::io::{BufRead, BufReader};
 
 use std::fmt::{Display, Formatter};
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::sync::RwLock;
 
 use log::*;
@@ -232,14 +235,72 @@ impl SocketHandler {
         let url = SocketHandler::sterilize_path(&req.path);
 
         if url.starts_with(&*ROOT) {
-            let comp = ROOT.join(PathBuf::from(".well-known/access.log"));
-            if url.clone() == comp {
-                SocketHandler::log_response()
+            let not_mod = SocketHandler::check_if_match(req, &url)
+                .or(SocketHandler::check_modified_since(req, &url));
+
+            if not_mod.is_some() {
+                not_mod.unwrap()
             }else{
-                Response::file_response(&url)
+                let comp = ROOT.join(PathBuf::from(".well-known/access.log"));
+                if url.clone() == comp {
+                    SocketHandler::log_response()
+                }else{
+                    Response::file_response(&url)
+                }
             }
         }else{
             Response::forbidden()
+        }
+    }
+
+    fn check_modified_since(req: &Request, full_path: &Path) -> Option<Response> {
+        match req.headers.if_modified {
+            Some(date) => {
+                let sys_time: SystemTime = date.into();
+                match full_path.metadata() {
+                    Ok(meta) => {
+                        match meta.modified() {
+                            Ok(time) => {
+                                if sys_time < time {
+                                    return None;
+                                }else{
+                                    return Some(
+                                        Response::not_modified(full_path)
+                                    );
+                                }
+                            },
+                            Err(err) => {
+                                warn!("couldn't retrieve last-modified date for file: '{}'", err);
+                                None
+
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        warn!("couldn't retrieve last-modified date for file: '{}'", err);
+                        None
+                    }
+                }
+            },
+            None =>
+                None
+        }
+    }
+
+    fn check_if_match(req: &Request, full_path: &Path) -> Option<Response> {
+        use etag::*;
+
+        match &req.headers.if_match {
+            Some(etag) => {
+                let comp_etag = file_etag(full_path).ok()?;
+                if comp_etag == *etag {
+                    Some(Response::not_modified(full_path))
+                }else{
+                    None
+                }
+            },
+            None =>
+                None
         }
     }
 

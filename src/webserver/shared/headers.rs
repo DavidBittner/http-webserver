@@ -44,6 +44,7 @@ pub struct HeaderList {
     pub if_modified:     Option<DateTime<Utc>>,
     pub if_unmodified:   Option<DateTime<Utc>>,
     pub if_match:        Option<String>,
+    pub etag:            Option<u64>
 }
 
 use std::str::FromStr;
@@ -308,6 +309,13 @@ impl Display for HeaderList {
             None =>
                 ()
         };
+
+        match &self.user_agent {
+            Some(agent) =>
+                write!(fmt, "User-Agent: {}\r\n", agent)?,
+            None =>
+                ()
+        }
 
         match &self.accept {
             Some(acc) =>

@@ -9,6 +9,7 @@ use log::*;
 use tera::Tera;
 
 use crate::CONFIG;
+use crate::webserver::socket_handler::ROOT;
 use crate::webserver::shared::*;
 use crate::webserver::requests::Request;
 use super::status_code::StatusCode;
@@ -130,6 +131,37 @@ impl Response {
             "The request timed out.",
             headers
         )
+    }
+
+    pub fn not_modified(loc: &Path) -> Self {
+        let mut headers = HeaderList::response_headers();
+
+        let new_path = loc.strip_prefix(&*ROOT)
+            .unwrap_or(loc);
+
+        let temp = if loc.starts_with(&*ROOT) {
+            loc.into()
+        }else{
+            ROOT.join(
+                loc
+                    .strip_prefix("/")
+                    .unwrap_or(loc)
+            )
+        };
+
+        if temp.is_dir() {
+            headers.location = Some(
+                PathBuf::from(format!("{}/", new_path.display()))
+            );
+        }else{
+            headers.location = Some(new_path.into());
+        }
+
+        Self {
+            code: StatusCode::NotModified,
+            headers: headers,
+            data: None,
+        }
     }
 
     pub fn options_response(_path: &Path) -> Self {
@@ -313,8 +345,6 @@ impl Response {
     }
 
     fn redirect(path: &Path, code: StatusCode) -> Self {
-        use crate::webserver::socket_handler::ROOT;
-
         let mut headers = HeaderList::response_headers();
         let new_path = path.strip_prefix(&*ROOT)
             .unwrap_or(path);
