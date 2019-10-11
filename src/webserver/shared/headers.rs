@@ -45,7 +45,8 @@ pub struct HeaderList {
     pub if_modified:     Option<DateTime<Utc>>,
     pub if_unmodified:   Option<DateTime<Utc>>,
     pub if_match:        Option<String>,
-    pub etag:            Option<String>
+    pub if_none_match:   Option<Vec<String>>,
+    pub etag:            Option<String>,
 }
 
 use std::str::FromStr;
@@ -197,6 +198,14 @@ impl FromStr for HeaderList {
                         ret.etag = Some(desc.into()),
                     "if-match" =>
                         ret.if_match = Some(desc.into()),
+                    "if-none-match" => {
+                        let etags: Vec<String> = desc
+                            .split_whitespace()
+                            .map(|stri| stri.into())
+                            .collect();
+
+                        ret.if_none_match = Some(etags);
+                    },
                     _ => {
                         log::warn!("unrecognized header: '{}'", verb);
                         //return Err(UnknownHeaderError(verb.into()))

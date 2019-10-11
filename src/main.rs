@@ -16,6 +16,7 @@ lazy_static::lazy_static! {
 
         conf.set_default("read_timeout", 5000).unwrap();
         conf.set_default("write_timeout", 5000).unwrap();
+        conf.set_default("max_request_size", 8192).unwrap();
 
         let root = std::env::current_dir();
         let root = root

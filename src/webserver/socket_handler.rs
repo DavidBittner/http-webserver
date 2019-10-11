@@ -107,13 +107,10 @@ impl SocketHandler {
     pub fn dispatch(mut self) -> Result<()> {
         loop {
             let req = self.parse_request();
-            let mut conn = None;
 
             //If the response failed to be parsed, send a bad request
             let mut resp = match &req {
                 Ok(req) => {
-                    conn = req.headers.connection.clone();
-
                     if req.ver != "HTTP/1.1" {
                         Response::unsupported_version()
                     }else{
@@ -253,7 +250,9 @@ impl SocketHandler {
 
         if url.starts_with(&*ROOT) {
             let not_mod = SocketHandler::check_if_match(req, &url)
-                .or(SocketHandler::check_modified_since(req, &url));
+                .or(SocketHandler::check_modified_since(req, &url))
+                .or(SocketHandler::check_unmodified_since(req, &url))
+                .or(SocketHandler::check_if_none_match(req, &url));
 
             if not_mod.is_some() {
                 not_mod.unwrap()
@@ -307,6 +306,41 @@ impl SocketHandler {
         }
     }
 
+    fn check_unmodified_since(req: &Request, full_path: &Path) -> Option<Response> {
+        match req.headers.if_modified {
+            Some(date) => {
+                let check_time: SystemTime = date.into();
+                match full_path.metadata() {
+                    Ok(meta) => {
+                        match meta.modified() {
+                            Ok(time) => {
+                                if check_time >= time {
+                                    None
+                                }else{
+                                    Some(Response::precondition_failed())
+                                }
+                            },
+                            Err(err) => {
+                                warn!("couldn't retrieve last-modified date for file: '{}'", err);
+                                Some(Response::precondition_failed())
+
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        warn!(
+                            "couldn't retrieve metadata for file: '{}'",
+                            err
+                        );
+                        Some(Response::precondition_failed())
+                    }
+                }
+            },
+            None =>
+                None
+        }
+    }
+
     fn check_if_match(req: &Request, full_path: &Path) -> Option<Response> {
         use etag::*;
 
@@ -318,6 +352,24 @@ impl SocketHandler {
                 }else{
                     Some(Response::precondition_failed())
                 }
+            },
+            None =>
+                None
+        }
+    }
+
+    fn check_if_none_match(req: &Request, full_path: &Path) -> Option<Response> {
+        use etag::*;
+
+        match &req.headers.if_none_match {
+            Some(etags) => {
+                let comp_etag = file_etag(full_path).ok()?;
+                for etag in etags.iter() {
+                    if comp_etag == *etag {
+                        return None;
+                    }
+                }
+                Some(Response::precondition_failed())
             },
             None =>
                 None
