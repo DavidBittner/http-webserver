@@ -277,7 +277,7 @@ impl SocketHandler {
                     Ok(meta) => {
                         match meta.modified() {
                             Ok(time) => {
-                                if check_time < time {
+                                if check_time <= time {
                                     None
                                 }else{
                                     return Some(
@@ -307,7 +307,7 @@ impl SocketHandler {
     }
 
     fn check_unmodified_since(req: &Request, full_path: &Path) -> Option<Response> {
-        match req.headers.if_modified {
+        match req.headers.if_unmodified {
             Some(date) => {
                 let check_time: SystemTime = date.into();
                 match full_path.metadata() {
