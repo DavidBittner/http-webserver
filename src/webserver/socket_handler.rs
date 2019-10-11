@@ -314,7 +314,7 @@ impl SocketHandler {
             Some(etag) => {
                 let comp_etag = file_etag(full_path).ok()?;
                 if comp_etag == *etag {
-                    Some(Response::not_modified(full_path))
+                    None
                 }else{
                     Some(Response::precondition_failed())
                 }
