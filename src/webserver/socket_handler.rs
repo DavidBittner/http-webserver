@@ -277,7 +277,7 @@ impl SocketHandler {
                     Ok(meta) => {
                         match meta.modified() {
                             Ok(time) => {
-                                if check_time <= time {
+                                if check_time < time {
                                     None
                                 }else{
                                     return Some(
