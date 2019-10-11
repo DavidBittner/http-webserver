@@ -167,19 +167,22 @@ impl SocketHandler {
                 }
             };
 
+            let conn;
             match req {
-                Ok(req) => {
+                Ok(mut req) => {
                     let entry = LogEntry::new(&self.addr, &req, &resp);
                     let mut list = LOG_LIST.write().unwrap();
                     list.push(entry);
+
+                    conn = req.headers.connection
+                        .get_or_insert(Connection::LongLived)
+                        .clone();
                 },
                 Err(_) =>
-                    ()
+                    conn = resp.headers.connection
+                        .get_or_insert(Connection::Close)
+                        .clone()
             };
-
-            let conn = resp.headers.connection
-                .get_or_insert(Connection::LongLived)
-                .clone();
 
             resp.write_self(&mut self.stream)?;
             trace!("response written to '{}'", self.addr);

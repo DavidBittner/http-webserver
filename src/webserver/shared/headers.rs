@@ -195,6 +195,8 @@ impl FromStr for HeaderList {
                     },
                     "etag" =>
                         ret.etag = Some(desc.into()),
+                    "if-match" =>
+                        ret.if_match = Some(desc.into()),
                     _ => {
                         log::warn!("unrecognized header: '{}'", verb);
                         //return Err(UnknownHeaderError(verb.into()))
