@@ -1,23 +1,29 @@
 pub mod etag;
 
-use super::requests::*;
-use super::responses::*;
-use super::shared::headers::*;
-use super::shared::*;
+use {
+    super::requests::*,
+    super::responses::*,
+    super::shared::headers::*,
+    super::shared::*,
+    crate::CONFIG,
+    super::clf::*,
+};
 
-use std::time::{Duration, SystemTime};
-use std::net::{TcpStream, SocketAddr};
-use std::io::{BufRead, BufReader};
+use {
+    std::time::{Duration, SystemTime},
+    async_std::{
+        net::{TcpStream},
+        io::{BufReader},
+        prelude::*
+    },
+    std::net::SocketAddr,
 
-use std::fmt::{Display, Formatter};
-use std::error::Error;
-use std::path::{PathBuf, Path};
-use std::sync::RwLock;
-
-use log::*;
-
-use crate::CONFIG;
-use super::clf::*;
+    std::fmt::{Display, Formatter},
+    std::error::Error,
+    std::path::{PathBuf, Path},
+    std::sync::RwLock,
+    log::*,
+};
 
 type Result<T> = std::result::Result<T, SocketError>;
 
@@ -95,18 +101,16 @@ impl From<std::io::Error> for SocketError {
 use std::io::Result as ioResult;
 impl SocketHandler {
     pub fn new(stream: TcpStream) -> ioResult<Self> {
-        stream.set_read_timeout(Some(*READ_TIMEOUT))?;
-        stream.set_write_timeout(Some(*WRITE_TIMEOUT))?;
-
         Ok(SocketHandler {
             addr:   stream.peer_addr()?,
             stream: stream,
         })
     }
 
-    pub fn dispatch(mut self) -> Result<()> {
+    pub async fn dispatch(mut self) -> Result<()> {
         loop {
-            let req = self.parse_request();
+            let req = self.parse_request()
+                .await;
 
             //If the response failed to be parsed, send a bad request
             let mut resp = match &req {
@@ -117,17 +121,21 @@ impl SocketHandler {
                         match req.method {
                             Method::Get => {
                                 self.get(&req)
+                                    .await
                             },
                             Method::Head => {
-                                let mut resp = self.get(&req);
+                                let mut resp = 
+                                    self.get(&req).await;
                                 resp.data = None;
                                 resp
                             },
                             Method::Options => {
                                 self.options(&req)
+                                    .await
                             },
                             Method::Trace => {
                                 self.trace(&req)
+                                    .await
                             },
                             _ =>{
                                 Response::not_implemented()
@@ -194,11 +202,12 @@ impl SocketHandler {
         Ok(())
     }
 
-    fn parse_request(&mut self) -> Result<Request> {
-        let reader = BufReader::new(&mut self.stream);
+    async fn parse_request(&mut self) -> Result<Request> {
+        let reader = BufReader::new(&self.stream);
+        let mut lines = reader.lines();
         let mut buff = String::new();
 
-        for line in reader.lines() {
+        while let Some(line) = lines.next().await {
             let line = line?;
             if line.is_empty() {
                 buff.push_str("\r\n");
@@ -245,7 +254,7 @@ impl SocketHandler {
         }
     }
 
-    fn get(&mut self, req: &Request) -> Response {
+    async fn get(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
 
         if url.starts_with(&*ROOT) {
@@ -260,6 +269,7 @@ impl SocketHandler {
                 let comp = ROOT.join(PathBuf::from(".well-known/access.log"));
                 if url.clone() == comp {
                     SocketHandler::log_response()
+                        .await
                 }else{
                     Response::file_response(&url)
                 }
@@ -376,7 +386,7 @@ impl SocketHandler {
         }
     }
 
-    fn log_response() -> Response {
+    async fn log_response() -> Response {
         let mut buff = String::new();
         {
             let log_list = LOG_LIST.read().unwrap();
@@ -398,7 +408,7 @@ impl SocketHandler {
         }
     }
 
-    fn options(&mut self, req: &Request) -> Response {
+    async fn options(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
 
         if url.starts_with(&*ROOT) {
@@ -408,7 +418,7 @@ impl SocketHandler {
         }
     }
 
-    fn trace(&mut self, req: &Request) -> Response {
+    async fn trace(&mut self, req: &Request) -> Response {
         Response::trace_response(req)
     }
 }

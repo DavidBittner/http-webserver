@@ -16,7 +16,7 @@ use crate::webserver::requests::Request;
 use super::status_code::StatusCode;
 use super::redirect::*;
 
-use std::io::Result as ioResult;
+use async_std::io::Result as ioResult;
 
 lazy_static::lazy_static!{
     static ref TERA: Tera = {
@@ -407,18 +407,27 @@ impl Response {
         }
     }
 
-    pub fn write_self<'a, T>(self, writer: &'a mut T) -> ioResult<()>
+    pub async fn write_self<'a, T>(self, writer: &'a mut T) -> ioResult<()>
     where
-        T: std::io::Write + Sized
+        T: async_std::io::Write +
+           Sized                + 
+           std::marker::Unpin
     {
+        use std::fmt::Write;
+
         let num = self.code.to_u16()
             .unwrap_or(0);
 
-        write!(writer, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
-        write!(writer, "{}\r\n", self.headers)?;
+        let mut buff = String::new();
+        write!(&mut buff, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
+        write!(&mut buff, "{}\r\n", self.headers)?;
+
+        writer.write(buff.as_bytes());
+
         match self.data {
             Some(dat) => {
-                std::io::copy(&mut dat.as_slice(), &mut *writer)?;
+                async_std::io::copy(&mut dat.as_slice(), &mut *writer)
+                    .await?;
                 ()
             },
             None => ()
