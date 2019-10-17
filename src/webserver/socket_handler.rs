@@ -31,7 +31,7 @@ lazy_static::lazy_static! {
         PathBuf::from(root)
     };
 
-    static ref READ_TIMEOUT: Duration = {
+    pub static ref READ_TIMEOUT: Duration = {
         lazy_static::initialize(&CONFIG);
 
         let ms: u64 = CONFIG.get("read_timeout")
@@ -40,7 +40,7 @@ lazy_static::lazy_static! {
         Duration::from_millis(ms)
     };
 
-    static ref WRITE_TIMEOUT: Duration = {
+    pub static ref WRITE_TIMEOUT: Duration = {
         lazy_static::initialize(&CONFIG);
 
         let ms: u64 = CONFIG.get("write_timeout")
@@ -182,7 +182,7 @@ impl SocketHandler {
                         .clone()
             };
 
-            resp.write_self(&mut self.stream)?;
+            self.write_response(resp)?;
             trace!("response written to '{}'", self.addr);
 
             match conn {
@@ -250,6 +250,41 @@ impl SocketHandler {
         );
 
         Ok(req_str.parse()?)
+    }
+
+    fn write_response(&mut self, resp: Response) -> Result<()> {
+        use std::time::Instant;
+        use std::io::Write;
+
+        let mut buff = Vec::new();
+        resp.write_self(&mut buff)?;
+
+        let mut start = Instant::now();
+        while buff.len() > 0 &&
+              (Instant::now() - start) < *WRITE_TIMEOUT
+        {
+            match self.stream.write(&buff) {
+                Ok(siz) => {
+                    if siz == buff.len() {
+                        return Ok(())
+                    }else{
+                        buff.split_at(siz);
+                        start = Instant::now();
+                    }
+                },
+                Err(err) => {
+                    use std::io::ErrorKind;
+                    match err.kind() {
+                        ErrorKind::WouldBlock =>
+                            continue,
+                        _                     => 
+                            return Err(err.into())
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn sterilize_path(path: &PathBuf) -> PathBuf {
