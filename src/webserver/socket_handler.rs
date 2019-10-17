@@ -7,7 +7,7 @@ use super::shared::*;
 
 use std::time::{Duration, SystemTime};
 use std::net::{TcpStream, SocketAddr};
-use std::io::{BufRead, BufReader};
+use std::io::Read;
 
 use std::fmt::{Display, Formatter};
 use std::error::Error;
@@ -96,8 +96,6 @@ impl From<std::io::Error> for SocketError {
 use std::io::Result as ioResult;
 impl SocketHandler {
     pub fn new(stream: TcpStream) -> ioResult<Self> {
-        stream.set_read_timeout(Some(*READ_TIMEOUT))?;
-        stream.set_write_timeout(Some(*WRITE_TIMEOUT))?;
         stream.set_nonblocking(true)?;
 
         Ok(SocketHandler {
@@ -146,7 +144,7 @@ impl SocketHandler {
                         IoError(err) => {
                             use std::io::ErrorKind::*;
                             match err.kind() {
-                                WouldBlock => {
+                                TimedOut => {
                                     error!("request timed out: '{}'", err);
                                     Response::timed_out()
                                 },
@@ -198,10 +196,17 @@ impl SocketHandler {
     }
 
     fn read_request(&mut self) -> Result<Request> {
-        use std::io::Read;
+        use std::time::Instant;
+        let mut start = Instant::now();
 
         let mut in_buff = vec![0; 2048]; 
         while !self.req_buff.contains("\r\n\r\n") {
+            //Check for timeouts
+            if Instant::now() - start >= *READ_TIMEOUT {
+                use std::io::{Error, ErrorKind};
+                return Err(Error::from(ErrorKind::TimedOut).into());
+            }
+
             match self.stream.read(&mut in_buff) {
                 Ok(siz) => {
                     if siz != 0 {
@@ -210,6 +215,7 @@ impl SocketHandler {
                             .into();
 
                         self.req_buff.push_str(&dat);
+                        start = Instant::now();
                     }else{
                         use std::net::Shutdown;
                         self.stream.shutdown(Shutdown::Both)?;
