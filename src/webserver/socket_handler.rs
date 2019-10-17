@@ -55,8 +55,9 @@ lazy_static::lazy_static! {
 }
 
 pub struct SocketHandler {
-    stream: TcpStream,
-    addr:   SocketAddr,
+    stream:   TcpStream,
+    addr:     SocketAddr,
+    req_buff: String
 }
 
 #[derive(Debug)]
@@ -97,16 +98,18 @@ impl SocketHandler {
     pub fn new(stream: TcpStream) -> ioResult<Self> {
         stream.set_read_timeout(Some(*READ_TIMEOUT))?;
         stream.set_write_timeout(Some(*WRITE_TIMEOUT))?;
+        stream.set_nonblocking(true)?;
 
         Ok(SocketHandler {
-            addr:   stream.peer_addr()?,
-            stream: stream,
+            addr:     stream.peer_addr()?,
+            stream:   stream,
+            req_buff: String::new()
         })
     }
 
     pub fn dispatch(mut self) -> Result<()> {
         loop {
-            let req = self.parse_request();
+            let req = self.read_request();
 
             //If the response failed to be parsed, send a bad request
             let mut resp = match &req {
@@ -194,33 +197,53 @@ impl SocketHandler {
         Ok(())
     }
 
-    fn parse_request(&mut self) -> Result<Request> {
-        let reader = BufReader::new(&mut self.stream);
-        let mut buff = String::new();
+    fn read_request(&mut self) -> Result<Request> {
+        use std::io::Read;
 
-        for line in reader.lines() {
-            let line = line?;
-            if line.is_empty() {
-                buff.push_str("\r\n");
-                break;
-            }else{
-                buff.push_str(&line);
-                buff.push_str("\r\n");
+        let mut in_buff = vec![0; 2048]; 
+        while !self.req_buff.contains("\r\n\r\n") {
+            match self.stream.read(&mut in_buff) {
+                Ok(siz) => {
+                    if siz != 0 {
+                        let dat = &in_buff[0..siz];
+                        let dat: String = String::from_utf8_lossy(&dat)
+                            .into();
+
+                        self.req_buff.push_str(&dat);
+                    }else{
+                        use std::net::Shutdown;
+                        self.stream.shutdown(Shutdown::Both)?;
+                        return Err(SocketError::ConnectionClosed);
+                    }
+                },
+                Err(err) => {
+                    use std::io::ErrorKind;
+                    match err.kind() {
+                        ErrorKind::WouldBlock =>
+                            continue,
+                        _ =>
+                            return Err(err.into())
+                    }
+                }
             }
         }
 
-        if buff.is_empty() {
-            use std::net::Shutdown;
-            self.stream.shutdown(Shutdown::Both)?;
-            Err(SocketError::ConnectionClosed)
-        }else{
-            trace!("received request from '{}'", self.addr);
+        //Can unwrap due to the fact it will only get here if
+        //we know the buffer contains the marker.
+        let pos = self.req_buff.find("\r\n\r\n")
+            .unwrap();
 
-            let request = buff.parse()?;
-            Ok(request)
-        }
+        //Add four to the pos because we want to keep the ending chars
+        let mut req_str = self.req_buff.split_off(pos + 4);
+        std::mem::swap(&mut req_str, &mut self.req_buff);
 
+        trace!(
+            "request of size '{}' received from '{}'",
+            req_str.len(),
+            self.addr
+        );
 
+        Ok(req_str.parse()?)
     }
 
     fn sterilize_path(path: &PathBuf) -> PathBuf {
