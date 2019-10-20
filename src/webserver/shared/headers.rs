@@ -1,53 +1,45 @@
 pub mod connection;
-pub use connection::*;
 
 use crate::webserver::shared::method::*;
 
 use chrono::{DateTime, Utc};
 use chrono::prelude::*;
 use mime::*;
-use std::path::PathBuf;
+use std::collections::HashMap;
+
+#[macro_export]
+macro_rules! define_const {
+    ($vn:ident, $st:literal) => {
+        const $vn: String = String::from($st);
+    }
+}
+
+define_const!(CONNECTION,          "Connection");
+define_const!(HOST,                "Host");
+define_const!(SERVER,              "Server");
+define_const!(DATE,                "Date");
+define_const!(CONTENT_TYPE,        "Content-Type");
+define_const!(CONTENT_LENGTH,      "Content-Length");
+define_const!(LAST_MODIFIED,       "Last-Modified");
+define_const!(USER_AGENT,          "User-Agent");
+define_const!(ACCEPT,              "Accept");
+define_const!(LOCATION,            "Location");
+define_const!(IF_MODIFIED_SINCE,   "If-Modified-Since");
+define_const!(IF_UNMODIFIED_SINCE, "If-Unmodified-Since");
+define_const!(ETAG,                "ETag");
+define_const!(IF_MATCH,            "If-Match");
+define_const!(IF_NONE_MATCH,       "If-None-Match");
 
 /// This module simple contains the header structure as well as parsing code.
 /// The usage is as follows: 
 /// ```rust
-/// # use requests::headers::*;
-/// let example_string = "Connection: close";
-/// let as_struct: Result<HeaderList, _> = example_string.parse();
-///
-/// assert_eq!(
-///     as_struct.unwrap(),
-///     HeaderList{
-///         connection: Some(Connection::Close),
-///         host: None,
-///         .. Default::default()
-///     }
-/// );
 /// ```
 
 ///A struct that contains all the headers a request can contain.
 ///By default it is created setting everything to it's standard defaults
 ///and values are overwritten as they are parsed.
 #[derive(Debug, PartialEq, Default)]
-pub struct HeaderList {
-    ///The connection status after this request.
-    pub connection:      Option<Connection>,
-    pub host:            Option<String>,
-    pub server:          Option<String>,
-    pub date:            Option<DateTime<Utc>>,
-    pub content_type:    Option<Mime>,
-    pub content_len:     Option<usize>,
-    pub last_modified:   Option<DateTime<Utc>>,
-    pub allow:           Option<Vec<Method>>,
-    pub user_agent:      Option<String>,
-    pub accept:          Option<String>,
-    pub location:        Option<PathBuf>,
-    pub if_modified:     Option<DateTime<Utc>>,
-    pub if_unmodified:   Option<DateTime<Utc>>,
-    pub if_match:        Option<String>,
-    pub if_none_match:   Option<Vec<String>>,
-    pub etag:            Option<String>,
-}
+pub struct HeaderList(HashMap<String, String>);
 
 use std::str::FromStr;
 use std::error::Error;
@@ -55,7 +47,6 @@ use std::error::Error;
 ///An error received when a supplied header is not implemented/unknown.
 #[derive(Debug, PartialEq)]
 pub enum HeaderError {
-    UnknownHeaderError(String),
     InvalidFormatError(String),
     UnrecognizedParameterError{head: String, param: String}
 }
@@ -63,8 +54,6 @@ pub enum HeaderError {
 impl std::fmt::Display for HeaderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HeaderError::UnknownHeaderError(head) =>
-                write!(f, "UnknownHeaderError: '{}'", head),
             HeaderError::InvalidFormatError(head) =>
                 write!(f, "InvalidFormatError: '{}'", head),
             HeaderError::UnrecognizedParameterError{head, param} =>
@@ -81,7 +70,7 @@ impl FromStr for HeaderList {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use HeaderError::*;
 
-        let mut ret: HeaderList = Default::default();
+        let mut ret: HashMap<String, String> = HashMap::new();
 
         for line in s.lines() {
             let mut req: Vec<_> = line
@@ -95,17 +84,30 @@ impl FromStr for HeaderList {
             }else{
                 let verb = req.remove(0);
                 let desc = req.remove(0);
-                if req.len() != 0 {
-                    return Err(
-                        InvalidFormatError(
-                            format!(
-                                "remaining data in container: '{:?}'",
-                                req
-                            )
-                        )
-                    );
-                }
 
+                match verb.to_lowercase() {
+                    CONNECTION => {
+                        match desc.to_lowercase() {
+
+                        }
+                    },
+                    DATE => {
+                        let date: DateTime<Utc> = desc.parse()
+                            .map_err(|_| {
+                                InvalidFormatError(
+                                    format!(
+                                        "'{}' is not a valid date format.",
+                                        desc
+                                    )
+                                )
+                            })?;
+
+                        ret.insert(DATE, Self::format_date(&date));
+                    },
+                    _ => {
+                        ret.insert(verb.into(), desc.into());
+                    }
+                }
                 match verb.to_lowercase().as_str() {
                     "connection" => {
                         match desc.parse::<Connection>() {
@@ -121,17 +123,6 @@ impl FromStr for HeaderList {
                     "server" =>
                         ret.server = Some(desc.into()),
                     "date" => {
-                        let date: DateTime<Utc> = desc.parse()
-                            .map_err(|_| {
-                                InvalidFormatError(
-                                    format!(
-                                        "'{}' is not a valid date format.",
-                                        desc
-                                    )
-                                )
-                            })?;
-
-                        ret.date = Some(date);
                     },
                     "content-type" => {
                         let typ: Mime = desc.parse()
@@ -226,11 +217,19 @@ impl HeaderList {
             SERVER_VERS
         };
 
+        let mut ret: HashMap<String, String> = Default::default();
+        ret.insert("date".into(), Self::format_date(&Utc::now()));
+        ret.insert("server".into(), format!("{}-{}", SERVER_NAME, SERVER_VERS));
+
+        /*
         HeaderList {
             date: Utc::now().into(),
             server: format!("{}-{}", SERVER_NAME, SERVER_VERS).into(),
             .. Default::default()
         }
+        */
+
+        Self(ret)
     }
 
     fn format_date(date: &DateTime<Utc>) -> String {
