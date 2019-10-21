@@ -1,4 +1,0 @@
-
-super::define_const!{
-
-}

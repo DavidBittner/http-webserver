@@ -1,50 +1,69 @@
-pub mod connection;
-
-use crate::webserver::shared::method::*;
+/// This module simply contains a wrapper for a HashMap that allows
+/// easier access/modification to header values. It does not allow you
+/// to get a direct mutable reference to an internal value.
+/// You can only modify headers through the various setter functions
+/// to make sure that they are not set to arbitrary strings.
+/// The usage is as follows: 
+/// ```rust
+/// let headers = "Connection: close\r\nhost: localhost:80"
+/// let headers: HeaderList = headers.parse()
+///     .unwrap();
+///
+/// assert_eq!(headers.connection(), connection::CLOSE);
+/// ```
 
 use chrono::{DateTime, Utc};
+use super::method::*;
 use chrono::prelude::*;
 use mime::*;
 use std::collections::HashMap;
 
-#[macro_export]
+/// Used to define a constant in the form of a header.
 macro_rules! define_const {
-    ($vn:ident, $st:literal) => {
-        const $vn: String = String::from($st);
+    { $($vn:ident = $st:literal),+ } => {
+        $(
+            pub const $vn: &'static str = $st;
+        )+
     }
 }
 
-define_const!(CONNECTION,          "Connection");
-define_const!(HOST,                "Host");
-define_const!(SERVER,              "Server");
-define_const!(DATE,                "Date");
-define_const!(CONTENT_TYPE,        "Content-Type");
-define_const!(CONTENT_LENGTH,      "Content-Length");
-define_const!(LAST_MODIFIED,       "Last-Modified");
-define_const!(USER_AGENT,          "User-Agent");
-define_const!(ACCEPT,              "Accept");
-define_const!(LOCATION,            "Location");
-define_const!(IF_MODIFIED_SINCE,   "If-Modified-Since");
-define_const!(IF_UNMODIFIED_SINCE, "If-Unmodified-Since");
-define_const!(ETAG,                "ETag");
-define_const!(IF_MATCH,            "If-Match");
-define_const!(IF_NONE_MATCH,       "If-None-Match");
+define_const!{
+    CONNECTION          = "connection",
+    HOST                = "host",
+    SERVER              = "server",
+    DATE                = "date",
+    CONTENT_TYPE        = "content-type",
+    CONTENT_LENGTH      = "content-length",
+    LAST_MODIFIED       = "last-modified",
+    ACCEPT              = "accept",
+    LOCATION            = "location",
+    ETAG                = "etag",
+    IF_MODIFIED_SINCE   = "if-modified-since",
+    IF_UNMODIFIED_SINCE = "if-unmodified-since",
+    IF_MATCH            = "if-match",
+    IF_NONE_MATCH       = "if-none-match"
+}
 
-/// This module simple contains the header structure as well as parsing code.
-/// The usage is as follows: 
-/// ```rust
-/// ```
+/// The list of constants corresponding to the acceptable values of
+/// a connection header.
+pub mod connection {
+    define_const! {
+        LONG_LIVED = "long-lived",
+        CLOSE      = "close",
+        PIPELINED  = "pipelined"
+    }
+}
 
-///A struct that contains all the headers a request can contain.
-///By default it is created setting everything to it's standard defaults
-///and values are overwritten as they are parsed.
+/// A wrapper around a hashmap that provides
+/// convienience functions for dealing with headers.
 #[derive(Debug, PartialEq, Default)]
 pub struct HeaderList(HashMap<String, String>);
 
 use std::str::FromStr;
 use std::error::Error;
 
-///An error received when a supplied header is not implemented/unknown.
+/// An error received when a supplied header is not known or is
+/// in a provably incorrect format.
 #[derive(Debug, PartialEq)]
 pub enum HeaderError {
     InvalidFormatError(String),
@@ -85,47 +104,36 @@ impl FromStr for HeaderList {
                 let verb = req.remove(0);
                 let desc = req.remove(0);
 
-                match verb.to_lowercase() {
+                let (key, val) = match verb.to_lowercase().as_str() {
                     CONNECTION => {
-                        match desc.to_lowercase() {
-
+                        match desc.to_lowercase().as_str() {
+                            connection::LONG_LIVED |
+                            connection::PIPELINED  |
+                            connection::CLOSE =>
+                                (CONNECTION, desc.to_lowercase()),
+                            _ => 
+                                return Err(UnrecognizedParameterError{
+                                    head:  CONNECTION.into(),
+                                    param: desc.into()
+                                })
                         }
                     },
                     DATE => {
-                        let date: DateTime<Utc> = desc.parse()
+                        desc.parse::<DateTime<Utc>>()
                             .map_err(|_| {
                                 InvalidFormatError(
                                     format!(
-                                        "'{}' is not a valid date format.",
+                                        "invalid date format for {}: '{}'",
+                                        DATE,
                                         desc
                                     )
                                 )
                             })?;
 
-                        ret.insert(DATE, Self::format_date(&date));
+                        (DATE, desc.into())
                     },
-                    _ => {
-                        ret.insert(verb.into(), desc.into());
-                    }
-                }
-                match verb.to_lowercase().as_str() {
-                    "connection" => {
-                        match desc.parse::<Connection>() {
-                            Ok(opt) => ret.connection = Some(opt),
-                            Err(_)  => return Err(UnrecognizedParameterError{
-                                head: verb.into(),
-                                param: desc.into()
-                            })
-                        }
-                    },
-                    "host" =>
-                        ret.host = Some(desc.into()),
-                    "server" =>
-                        ret.server = Some(desc.into()),
-                    "date" => {
-                    },
-                    "content-type" => {
-                        let typ: Mime = desc.parse()
+                    CONTENT_TYPE => {
+                        desc.parse::<Mime>()
                             .map_err(|_| {
                                 InvalidFormatError(
                                     format!(
@@ -135,10 +143,10 @@ impl FromStr for HeaderList {
                                 )
                             })?;
 
-                        ret.content_type = Some(typ);
+                        (CONTENT_TYPE.into(), desc.into())
                     },
-                    "content-length" => {
-                        let len: usize = desc.parse()
+                    CONTENT_LENGTH => {
+                        desc.parse::<usize>()
                             .map_err(|_| {
                                 InvalidFormatError(
                                     format!(
@@ -148,69 +156,71 @@ impl FromStr for HeaderList {
                                 )
                             })?;
                         
-                        ret.content_len = Some(len);
+                        (CONTENT_LENGTH.into(), desc.into())
                     },
-                    "last-modified" => {
-                        let time = desc.parse()
+                    LAST_MODIFIED => {
+                        desc.parse::<DateTime<Utc>>()
                             .map_err(|_| {
                                 InvalidFormatError(
                                     format!(
-                                        "invalid date format: '{}'",
+                                        "invalid date format for {}: '{}'",
+                                        LAST_MODIFIED,
                                         desc
                                     )
                                 )
                             })?;
 
-                        ret.last_modified = Some(time);
+                        (LAST_MODIFIED.into(), desc.into())
                     },
-                    "user-agent" =>
-                        ret.user_agent = Some(desc.into()),
-                    "accept" =>
-                        ret.accept = Some(desc.into()),
-                    "location" =>
-                        ret.location = Some(desc.into()),
-                    "if-modified-since" => {
-                        let time = Utc.datetime_from_str(
+                    IF_MODIFIED_SINCE => {
+                        Utc.datetime_from_str(
                                 desc.into(),
                                 "%a, %d %b %Y %T GMT"
-                            );
+                            )
+                            .map_err(|_| {
+                                InvalidFormatError(
+                                    format!(
+                                        "invalid date format for {}: '{}'",
+                                        IF_MODIFIED_SINCE,
+                                        desc
+                                    )
+                                )
+                            })?;
 
-                        ret.if_modified = time.ok();
+                        (IF_MODIFIED_SINCE.into(), desc.into())
                     },
-                    "if-unmodified-since" => {
-                        let time = Utc.datetime_from_str(
+                    IF_UNMODIFIED_SINCE => {
+                        Utc.datetime_from_str(
                                 desc.into(),
                                 "%a, %d %b %Y %T GMT"
-                            );
+                            ).map_err(|_| {
+                                InvalidFormatError(
+                                    format!(
+                                        "invalid date format for {}: '{}'",
+                                        IF_UNMODIFIED_SINCE,
+                                        desc
+                                    )
+                                )
+                            })?;
 
-                        ret.if_unmodified = time.ok();
-                    },
-                    "etag" =>
-                        ret.etag = Some(desc.into()),
-                    "if-match" =>
-                        ret.if_match = Some(desc.into()),
-                    "if-none-match" => {
-                        let etags: Vec<String> = desc
-                            .split_whitespace()
-                            .map(|stri| stri.into())
-                            .collect();
-
-                        ret.if_none_match = Some(etags);
-                    },
-                    _ => {
-                        log::warn!("unrecognized header: '{}'", verb);
-                        //return Err(UnknownHeaderError(verb.into()))
-                        ()
+                        (IF_UNMODIFIED_SINCE, desc.into())
                     }
-                }
+                    _ => {
+                        (verb.into(), desc.into())
+                    }
+                };
+
+                ret.insert(key.to_lowercase().into(), val.into());
             }
         }
 
-        Ok(ret)
+        Ok(Self(ret))
     }
 }
 
 impl HeaderList {
+    /// Generates the basic headers to get ready for a response.
+    /// Sets the server and date headers.
     pub fn response_headers() -> Self {
         use crate::webserver::responses::{
             SERVER_NAME,
@@ -218,18 +228,90 @@ impl HeaderList {
         };
 
         let mut ret: HashMap<String, String> = Default::default();
-        ret.insert("date".into(), Self::format_date(&Utc::now()));
-        ret.insert("server".into(), format!("{}-{}", SERVER_NAME, SERVER_VERS));
-
-        /*
-        HeaderList {
-            date: Utc::now().into(),
-            server: format!("{}-{}", SERVER_NAME, SERVER_VERS).into(),
-            .. Default::default()
-        }
-        */
+        ret.insert(DATE.into(), Self::format_date(&Utc::now()));
+        ret.insert(SERVER.into(), format!("{}-{}", SERVER_NAME, SERVER_VERS));
 
         Self(ret)
+    }
+
+    /// Used to retrieve a date stored under the given header name.
+    pub fn get_date(&self, name: &str) -> Option<DateTime<Utc>> {
+        let date = self.0.get(name)?;
+        let date = Utc
+            .datetime_from_str(
+                date,
+                "%a, %d %b %Y %T GMT"
+            );
+
+        date.ok() 
+    }
+
+    /// A helper method for when specifying the content type
+    /// and length of a response.
+    pub fn content(&mut self, typ: &str, len: usize) {
+        debug_assert!(typ.parse::<Mime>().is_ok());
+
+        self.0.insert(
+            CONTENT_LENGTH.into(),
+            len.to_string()
+        );
+
+        self.0.insert(
+            CONTENT_TYPE.into(),
+            typ.into()
+        );
+    }
+
+    /// Sets the etag header
+    pub fn etag(&mut self, etag: &str) {
+        self.0.insert(
+            ETAG.into(),
+            etag.into()
+        );
+    }
+
+    /// Sets the connection header
+    pub fn connection(&mut self, conn: &str) {
+        self.0.insert(
+            CONNECTION.into(),
+            conn.into()
+        );
+    }
+
+    /// Sets the accept header from a list of methods
+    pub fn accept(&mut self, methods: &[Method]) {
+        let mut buff = String::new();
+        for method in methods.iter() {
+            buff.push_str(&method.to_string());
+            buff.push_str(",");
+        }
+        //remove the extra comma
+        buff.remove(buff.len()-1);
+
+        self.0.insert(ACCEPT.into(), buff);
+    }
+
+    /// Sets the location header
+    pub fn location(&mut self, path: String) {
+        self.0.insert(
+            LOCATION.into(),
+            path
+        );
+    }
+
+    /// Sets the last modified header
+    pub fn last_modified(&mut self, time: &DateTime<Utc>) {
+        self.0.insert(
+            LAST_MODIFIED.into(),
+            Self::format_date(time)
+        );
+    }
+
+    pub fn get(&self, what: &str) -> Option<&str> {
+        match self.0.get(what) {
+            Some(val) => Some(val),
+            None      => None
+        }
     }
 
     fn format_date(date: &DateTime<Utc>) -> String {
@@ -241,104 +323,8 @@ impl HeaderList {
 use std::fmt::{Display, Formatter};
 impl Display for HeaderList {
     fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
-        match self.date {
-            Some(date) =>
-                write!(fmt, "Date: {}\r\n", HeaderList::format_date(&date))?,
-            None =>
-                ()
-        };
-
-        match &self.server {
-            Some(name) =>
-                write!(fmt, "Server: {}\r\n", name)?,
-            None => 
-                ()
-        };
-
-        match &self.content_len {
-            Some(len) =>
-                write!(fmt, "Content-Length: {}\r\n", len)?,
-            None =>
-                ()
-        };
-
-        match &self.content_type {
-            Some(typ) =>
-                write!(fmt, "Content-Type: {}\r\n", typ)?,
-            None =>
-                ()
-        };
-
-        match &self.connection {
-            Some(typ) =>
-                write!(fmt, "Connection: {}\r\n", typ)?,
-            None =>
-                ()
-        };
-
-        match &self.last_modified {
-            Some(modi) =>
-                write!(fmt, "Last-Modified: {}\r\n", HeaderList::format_date(modi))?,
-            None =>
-                ()
-        };
-
-        match &self.allow {
-            Some(allows) => {
-                let mut iter = allows.iter();
-                let first = iter.next();
-
-                match first {
-                    Some(first) => {
-                        write!(fmt, "Allow: ")?;
-                        write!(fmt, "{}", first)?;
-
-                        for opt in iter {
-                            write!(fmt, ", {}", opt)?;
-                        }
-                        write!(fmt, "\r\n")?;
-                    },
-                    None => ()
-                };
-
-            }
-            None =>
-                ()
-        };
-
-        match &self.host {
-            Some(host) =>
-                write!(fmt, "Host: {}\r\n", host)?,
-            None =>
-                ()
-        };
-
-        match &self.user_agent {
-            Some(agent) =>
-                write!(fmt, "User-Agent: {}\r\n", agent)?,
-            None =>
-                ()
-        }
-
-        match &self.accept {
-            Some(acc) =>
-                write!(fmt, "Accept: {}\r\n", acc)?,
-            None =>
-                ()
-        }
-
-        match &self.location {
-            Some(loc) =>
-                write!(fmt, "Location: /{}\r\n", loc.display())?,
-            None =>
-                ()
-        }
-
-        match &self.etag {
-            Some(etag) =>
-                write!(fmt, "ETag: {}\r\n", etag)?,
-            None =>
-                ()
+        for (key, val) in self.0.iter() {
+            write!(fmt, "{}: {}\r\n", key, val)?;
         }
 
         Ok(())
@@ -355,5 +341,7 @@ mod tests {
         let as_struct: Result<HeaderList, _> = test_str.parse();
 
         assert!(as_struct.is_ok());
+        let as_struct = as_struct.unwrap();
+        assert_eq!(connection::CLOSE, as_struct.get(CONNECTION).unwrap());
     }
 }

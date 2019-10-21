@@ -27,9 +27,9 @@ impl Display for RequestParsingError {
         use RequestParsingError::*;
 
         match self {
-            MethodError(err) => write!(f, "{}", err),
-            HeaderError(err) => write!(f, "{}", err),
-            UrlError(err)    => write!(f, "{}", err),
+            MethodError(err) => write!(f, "error with method: '{}'", err),
+            HeaderError(err) => write!(f, "error with header: '{}'", err),
+            UrlError(err)    => write!(f, "error with url: '{}'", err),
             FormatError      => write!(f, "could not understand the given request")
         }
     }
@@ -92,7 +92,7 @@ impl FromStr for Request {
                     FormatError
                 )?;
 
-            match &headers.host {
+            match headers.get(HOST) {
                 Some(host) => {
                     let base = format!("http://{}/", host);
 

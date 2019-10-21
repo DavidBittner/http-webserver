@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use chrono::{DateTime, Utc};
 use super::responses::*;
 use super::requests::*;
+use super::shared::headers::*;
 use num_traits::ToPrimitive;
 
 pub struct LogEntry {
@@ -23,8 +24,11 @@ impl LogEntry {
             req.ver
         );
 
-        let cont_len = resp.headers.content_len
+        let cont_len = resp.headers
+            .get(CONTENT_LENGTH)
             .clone()
+            .unwrap_or(&String::from("0"))
+            .parse()
             .unwrap_or(0);
 
         Self {

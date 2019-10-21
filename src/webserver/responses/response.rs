@@ -58,10 +58,7 @@ impl Response {
         match data {
             Ok(string) => {
                 let data: Vec<_> = string.into();
-                headers.content_len  = Some(data.len());
-                headers.content_type = Some("text/html"
-                    .parse()
-                    .unwrap());
+                headers.content("text/html".into(), data.len());
 
                 Self {
                     code: code,
@@ -125,7 +122,9 @@ impl Response {
 
     pub fn timed_out() -> Self {
         let mut headers = HeaderList::response_headers();
-        headers.connection = Some(Connection::Close);
+        headers.connection(
+            connection::CLOSE.into()
+        );
 
         Response::error(
             StatusCode::RequestTimeout,
@@ -151,11 +150,9 @@ impl Response {
         };
 
         if temp.is_dir() {
-            headers.location = Some(
-                PathBuf::from(format!("{}/", new_path.display()))
-            );
+            headers.location(format!("{}/", new_path.display()));
         }else{
-            headers.location = Some(new_path.into());
+            headers.location(format!("{}", new_path.display()));
         }
 
         Self {
@@ -174,14 +171,15 @@ impl Response {
     }
 
     pub fn options_response(_path: &Path) -> Self {
-        let mut methods = Vec::new();
-        methods.push(Method::Trace);
-        methods.push(Method::Options);
-        methods.push(Method::Get);
-        methods.push(Method::Head);
-
         let mut headers = HeaderList::response_headers();
-        headers.allow = Some(methods);
+        headers.accept(
+            &[
+                Method::Post,
+                Method::Get,
+                Method::Trace,
+                Method::Head
+            ]
+        );
 
         Self {
             code: StatusCode::Ok,
@@ -196,8 +194,7 @@ impl Response {
         let req_data = format!("{}", req);
         let req_data: Vec<u8> = req_data.into();
 
-        headers.content_type = Some("message/http".parse().unwrap());
-        headers.content_len  = Some(req_data.len());
+        headers.content("message/http", req_data.len());
 
         Self {
             code: StatusCode::Ok,
@@ -283,8 +280,9 @@ impl Response {
                         let time = meta.modified();
                         match time {
                             Ok(time) => {
-                                let time = time.into();
-                                headers.last_modified = Some(time);
+                                use chrono::{DateTime, Utc};
+                                let time: DateTime<Utc> = time.into();
+                                headers.last_modified(&time);
                             },
                             Err(err) => {
                                 error!("error occured while retrieving modified time: '{}'", err);
@@ -302,13 +300,12 @@ impl Response {
                     .unwrap_or(std::ffi::OsStr::new(""))
                     .to_string_lossy();
 
-                headers.content_len  = Some(buff.len());
-                headers.content_type = Some(map_extension(&ext));
+                headers.content(&map_extension(&ext).to_string(), buff.len());
 
                 let etag = file_etag(path);
                 match etag {
                     Ok(etag) =>
-                        headers.etag = Some(etag),
+                        headers.etag(&etag),
                     Err(err) =>
                         warn!(
                             "failed to generate etag for file '{}' err was: '{}'",
@@ -343,15 +340,13 @@ impl Response {
                 match data {
                     Ok(string) => {
                         let data: Vec<_> = string.into();
-                        headers.content_len  = Some(data.len());
-                        headers.content_type = Some("text/html"
-                            .parse()
-                            .unwrap());
+
+                        headers.content("text/html", data.len());
 
                         let etag = dir_etag(path);
                         match etag {
                             Ok(etag) =>
-                                headers.etag = Some(etag),
+                                headers.etag(&etag),
                             Err(err) =>
                                 warn!("error generating etag for dir: '{}'", err)
                         }
@@ -393,11 +388,9 @@ impl Response {
         };
 
         if temp.is_dir() {
-            headers.location = Some(
-                PathBuf::from(format!("{}/", new_path.display()))
-            );
+            headers.location(format!("{}/", new_path.display()));
         }else{
-            headers.location = Some(new_path.into());
+            headers.location(new_path.display().to_string());
         }
 
         Self {
