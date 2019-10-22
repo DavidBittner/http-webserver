@@ -255,36 +255,13 @@ impl SocketHandler {
     }
 
     fn write_response(&mut self, resp: Response) -> Result<()> {
-        use std::time::Instant;
-        use std::io::Write;
-
-        let mut buff = Vec::new();
-        resp.write_self(&mut buff)?;
-
-        let mut start = Instant::now();
-        while buff.len() > 0 &&
-              (Instant::now() - start) < *WRITE_TIMEOUT
-        {
-            match self.stream.write(&buff) {
-                Ok(siz) => {
-                    if siz == buff.len() {
-                        return Ok(())
-                    }else{
-                        buff.split_at(siz);
-                        start = Instant::now();
-                    }
-                },
-                Err(err) => {
-                    use std::io::ErrorKind;
-                    match err.kind() {
-                        ErrorKind::WouldBlock =>
-                            continue,
-                        _                     => 
-                            return Err(err.into())
-                    }
-                }
-            }
-        }
+        match resp.headers.is_chunked() {
+            true => {
+                resp.write_chunked(&mut self.stream)?;
+            },
+            false =>
+                resp.write_self(&mut self.stream)?
+        };
 
         Ok(())
     }
@@ -462,7 +439,7 @@ impl SocketHandler {
         Response {
             code: StatusCode::Ok,
             headers: headers,
-            data: Some(buff),
+            data: Some(buff.into()),
         }
     }
 

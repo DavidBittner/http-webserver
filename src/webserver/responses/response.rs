@@ -1,22 +1,23 @@
 mod templates;
 use templates::*;
 
-use num_traits::ToPrimitive;
 use crate::webserver::socket_handler::etag::*;
+use crate::webserver::socket_handler::ROOT;
+use crate::webserver::requests::Request;
+use super::status_code::StatusCode;
+use crate::webserver::shared::*;
+use super::redirect::*;
+use crate::CONFIG;
 
-use mime::Mime;
 use std::path::{Path, PathBuf};
+use std::io::{Write, Cursor};
+use std::io::Result as ioResult;
+
+use num_traits::ToPrimitive;
+use mime::Mime;
 use log::*;
 use tera::Tera;
 
-use crate::CONFIG;
-use crate::webserver::socket_handler::ROOT;
-use crate::webserver::shared::*;
-use crate::webserver::requests::Request;
-use super::status_code::StatusCode;
-use super::redirect::*;
-
-use std::io::Result as ioResult;
 
 lazy_static::lazy_static!{
     static ref TERA: Tera = {
@@ -43,11 +44,48 @@ lazy_static::lazy_static!{
 pub static SERVER_NAME: &'static str = "Ruserv";
 pub static SERVER_VERS: &'static str = env!("CARGO_PKG_VERSION");
 
-#[derive(Debug, PartialEq)]
+pub static CHUNK_SIZE: usize = 2048;
+
+pub enum ResponseData {
+    Buffer(Vec<u8>),
+    Stream(Box<dyn std::io::Read>)
+}
+
+impl Into<ResponseData> for Vec<u8> {
+    fn into(self) -> ResponseData {
+        ResponseData::Buffer(self)
+    }
+}
+
+impl From<Box<dyn std::io::Read>> for ResponseData {
+    fn from(oth: Box<dyn std::io::Read>) -> Self {
+        ResponseData::Stream(oth)
+    }
+}
+
+use std::fmt::{
+    Debug,
+    Formatter,
+    Result as fmtResult
+};
+impl Debug for ResponseData {
+    fn fmt(&self, fmt: &mut Formatter) -> fmtResult {
+        use ResponseData::*;
+
+        match self {
+            Buffer(buff) =>
+                write!(fmt, "Buffer([{}])", buff.len()),
+            Stream(_) =>
+                write!(fmt, "Stream(?)")
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Response {
     pub code: StatusCode,
     pub headers: HeaderList,
-    pub data: Option<Vec<u8>>
+    pub data: Option<ResponseData>
 }
 
 impl Response {
@@ -59,11 +97,12 @@ impl Response {
             Ok(string) => {
                 let data: Vec<_> = string.into();
                 headers.content("text/html".into(), data.len());
+                headers.chunked_encoding();
 
                 Self {
                     code: code,
                     headers: headers,
-                    data: Some(data)
+                    data: Some(data.into())
                 }
             },
             Err(_) => {
@@ -199,7 +238,7 @@ impl Response {
         Self {
             code: StatusCode::Ok,
             headers: headers,
-            data: Some(req_data)
+            data: Some(req_data.into())
         }
     }
 
@@ -317,7 +356,7 @@ impl Response {
                 Self {
                     code: code,
                     headers: headers,
-                    data: Some(buff)
+                    data: Some(buff.into())
                 }
             },
             Err(err) => {
@@ -342,6 +381,7 @@ impl Response {
                         let data: Vec<_> = string.into();
 
                         headers.content("text/html", data.len());
+                        headers.chunked_encoding();
 
                         let etag = dir_etag(path);
                         match etag {
@@ -354,7 +394,7 @@ impl Response {
                         Self {
                             code: StatusCode::Ok,
                             headers: headers,
-                            data: Some(data)
+                            data: Some(data.into())
                         }
                     },
                     Err(_) => {
@@ -400,6 +440,44 @@ impl Response {
         }
     }
 
+    fn write_w_timeout<'a, T>(writer: &'a mut T, dat: &[u8]) -> ioResult<()>
+    where
+        T: std::io::Write + Sized
+    {
+        use super::super::socket_handler::WRITE_TIMEOUT;
+        use std::io::ErrorKind;
+        use std::time::Instant;
+
+        let mut start = Instant::now();
+
+        let mut at = 0;
+        while at < dat.len() {
+            if (Instant::now() - start) >= *WRITE_TIMEOUT {
+                return Err(std::io::Error::new(
+                    ErrorKind::TimedOut,
+                    "writing the response timed out"
+                ));
+            }else {
+                match writer.write(&dat[at..]) {
+                    Ok(siz) => {
+                        at += siz;
+                        start = Instant::now();
+                    },
+                    Err(err) =>
+                        match err.kind() {
+                            ErrorKind::WouldBlock =>
+                                continue,
+                            _                     =>
+                                return Err(err)
+                        }
+                }
+            }
+        }
+        writer.flush()?;
+
+        Ok(())
+    }
+
     pub fn write_self<'a, T>(self, writer: &'a mut T) -> ioResult<()>
     where
         T: std::io::Write + Sized
@@ -407,16 +485,100 @@ impl Response {
         let num = self.code.to_u16()
             .unwrap_or(0);
 
-        write!(writer, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
-        write!(writer, "{}\r\n", self.headers)?;
+        let mut write_buff = Vec::new();
+        write!(write_buff, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
+        write!(write_buff, "{}\r\n", self.headers)?;
+
+        Self::write_w_timeout(writer, &mut write_buff)?;
+
         match self.data {
             Some(dat) => {
-                std::io::copy(&mut dat.as_slice(), &mut *writer)?;
-                ()
+                use ResponseData::*;
+                match dat {
+                    Buffer(buff) =>
+                        Self::write_w_timeout(writer, &buff)?,
+                    Stream(mut stream) => {
+                        use std::io::ErrorKind;
+
+                        write_buff = vec![0; 2048];
+                        loop {
+                            match stream.read(&mut write_buff) {
+                                Ok(siz) => {
+                                    if siz == 0 {
+                                        break;
+                                    }else{
+                                        Self::write_w_timeout(writer, &write_buff[0..siz])?;
+                                    }
+                                },
+                                Err(err) =>
+                                    match err.kind() {
+                                        ErrorKind::WouldBlock =>
+                                            continue,
+                                        _                     =>
+                                            return Err(err)
+                                    }
+                            }
+                        }
+                    }
+                };
             },
             None => ()
         }
         Ok(())
+    }
+
+    pub fn write_chunked<'a, T>(self, writer: &'a mut T) -> ioResult<()>
+    where
+        T: std::io::Write + Sized
+    {
+        let num = self.code.to_u16()
+            .unwrap_or(0);
+
+        let mut write_buff = Vec::new();
+        write!(&mut write_buff, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
+        write!(&mut write_buff, "{}\r\n", self.headers)?;
+
+        Self::write_w_timeout(writer, &write_buff)?;
+
+        match self.data {
+            Some(data) => {
+                let mut reader: Box<dyn std::io::Read> = match data {
+                    ResponseData::Buffer(buff) =>
+                        Box::new(Cursor::new(buff)),
+                    ResponseData::Stream(stream) =>
+                        Box::new(stream)
+                };
+
+                write_buff.clear();
+                reader.read_to_end(&mut write_buff)?;
+
+                for chunk in write_buff.chunks(CHUNK_SIZE) {
+                    Self::write_w_timeout(
+                        writer,
+                        &format!("{:x}\r\n", chunk.len())
+                            .into_bytes()
+                    )?;
+                    Self::write_w_timeout(
+                        writer,
+                        &chunk
+                    )?;
+                    Self::write_w_timeout(
+                        writer,
+                        &format!("\r\n")
+                            .into_bytes()
+                    )?;
+                }
+
+                Self::write_w_timeout(
+                    writer,
+                    &format!("0\r\n\r\n")
+                        .into_bytes()
+                )?;
+                Ok(())
+            },
+            None =>
+                Ok(())
+        }
     }
 }
 

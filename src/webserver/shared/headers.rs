@@ -34,14 +34,31 @@ define_const!{
     DATE                = "date",
     CONTENT_TYPE        = "content-type",
     CONTENT_LENGTH      = "content-length",
+    CONTENT_LANGUAGE    = "content-language",
+    CONTENT_LOCATION    = "content-location",
+    CONTENT_ENCODING    = "content-encoding",
+    CONTENT_RANGE       = "content-range",
     LAST_MODIFIED       = "last-modified",
-    ACCEPT              = "accept",
     LOCATION            = "location",
     ETAG                = "etag",
     IF_MODIFIED_SINCE   = "if-modified-since",
     IF_UNMODIFIED_SINCE = "if-unmodified-since",
     IF_MATCH            = "if-match",
-    IF_NONE_MATCH       = "if-none-match"
+    IF_NONE_MATCH       = "if-none-match",
+    IF_RANGE            = "if-range",
+    VARY                = "vary",
+    ACCEPT              = "accept",
+    ACCEPT_CHARSET      = "accept-charset",
+    ACCEPT_ENCODING     = "accept-encoding",
+    ACCEPT_LANGUAGE     = "accept-language",
+    ACCEPT_RANGE        = "accept-range",
+    NEGOTIATE           = "negotiate",
+    RANGE               = "range",
+    USER_AGENT          = "user-agent",
+    REFERER             = "referer",
+    TRANSFER_ENCODING   = "transfer-encoding",
+    ALTERNATES          = "alternates",
+    TCN                 = "TCN"
 }
 
 /// The list of constants corresponding to the acceptable values of
@@ -50,7 +67,8 @@ pub mod connection {
     define_const! {
         LONG_LIVED = "long-lived",
         CLOSE      = "close",
-        PIPELINED  = "pipelined"
+        PIPELINED  = "pipelined",
+        KEEP_ALIVE = "keep-alive"
     }
 }
 
@@ -109,7 +127,8 @@ impl FromStr for HeaderList {
                         match desc.to_lowercase().as_str() {
                             connection::LONG_LIVED |
                             connection::PIPELINED  |
-                            connection::CLOSE =>
+                            connection::CLOSE      |
+                            connection::KEEP_ALIVE =>
                                 (CONNECTION, desc.to_lowercase()),
                             _ => 
                                 return Err(UnrecognizedParameterError{
@@ -289,6 +308,23 @@ impl HeaderList {
         buff.remove(buff.len()-1);
 
         self.0.insert(ACCEPT.into(), buff);
+    }
+
+    pub fn chunked_encoding(&mut self) {
+        self.0.insert(
+            TRANSFER_ENCODING.into(),
+            "chunked".into()
+        );
+
+        self.0.remove(CONTENT_LENGTH);
+    }
+
+    pub fn is_chunked(&self) -> bool {
+        if let Some(enc) = self.0.get(TRANSFER_ENCODING.into()) {
+            enc == "chunked"
+        }else{
+            false
+        }
     }
 
     /// Sets the location header
