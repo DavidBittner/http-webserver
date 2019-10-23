@@ -341,10 +341,13 @@ impl Response {
                 }
 
             }
+            let ext = path.extension()
+                .unwrap_or(std::ffi::OsStr::new(""))
+                .to_string_lossy();
 
             let mut headers = HeaderList::response_headers();
             headers.content(
-                &mime::APPLICATION_OCTET_STREAM.to_string(),
+                &map_extension(&ext).to_string(),
                 ret_buff.len()
             );
 
