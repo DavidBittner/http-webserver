@@ -318,7 +318,7 @@ impl Response {
         if !path.exists() {
             Ok(Self::not_found())
         }else{
-            let mut file = File::create(path)?;
+            let mut file = File::open(path)?;
             for range in ranges.ranges.into_iter() {
                 if range.end.is_none() {
                     if range.start < 0 {
@@ -414,36 +414,42 @@ impl Response {
                 }
 
                 return Response::directory_listing(path);
-            }else if req.headers.has(RANGE) {
-                use std::io::ErrorKind::*;
-
-                let range_str = req.headers.get(RANGE)
-                    .unwrap();
-
-                let ranges: Result<RangeList, _> = range_str.parse();
-                match ranges {
-                    Ok(ranges) =>
-                        match Self::partial_content(path, ranges) {
-                            Ok(resp) => resp,
-                            Err(err) => match err.kind() {
-                                NotFound         => Self::not_found(),
-                                PermissionDenied => Self::forbidden(),
-                                _                => Self::internal_error()
-                            }
-                        }
-                    Err(err)   => {
-                        warn!("issue parsing ranges '{}', err was: '{}'",
-                            range_str,
-                            err
-                        );
-                        Self::internal_error()
-                    }
-                }
             }else{
                 return Response::redirect(
                     &path,
                     StatusCode::MovedPermanently
                 );
+            }
+        }else if req.headers.has(RANGE) {
+            use std::io::ErrorKind::*;
+
+            let range_str = req.headers.get(RANGE)
+                .unwrap();
+
+            let ranges: Result<RangeList, _> = range_str.parse();
+            match ranges {
+                Ok(ranges) =>
+                    match Self::partial_content(path, ranges) {
+                        Ok(resp) => resp,
+                        Err(err) => {
+                            error!(
+                                "error occurred while getting partial content: '{}'",
+                                err
+                            );
+                            match err.kind() {
+                                NotFound         => Self::not_found(),
+                                PermissionDenied => Self::forbidden(),
+                                _                => Self::internal_error()
+                            }
+                        }
+                    }
+                Err(err)   => {
+                    warn!("issue parsing ranges '{}', err was: '{}'",
+                        range_str,
+                        err
+                    );
+                    Self::internal_error()
+                }
             }
         }else{
             Self::file_response(path)
