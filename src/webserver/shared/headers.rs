@@ -281,6 +281,13 @@ impl HeaderList {
         );
     }
 
+    pub fn content_language(&mut self, lang: &str) {
+        self.0.insert(
+            CONTENT_LANGUAGE.into(),
+            lang.into()
+        );
+    }
+
     /// Sets the etag header
     pub fn etag(&mut self, etag: &str) {
         self.0.insert(
@@ -360,11 +367,36 @@ impl HeaderList {
     }
 }
 
+//I know, this function is hideous.
+fn title_case(s: &str) -> String {
+    let mut ret = String::new();
+    ret.push_str(&s
+        .chars()
+        .nth(0)
+        .unwrap()
+        .to_ascii_uppercase()
+        .to_string());
+
+    for (ind, _) in s.match_indices("-") {
+        ret.push_str(&s[ret.len()..=ind]);
+        ret.push_str(&s.chars()
+            .nth(ind+1)
+            .unwrap()
+            .to_ascii_uppercase()
+            .to_string()
+        );
+    }
+    ret.push_str(&s[ret.len()..s.len()]);
+    log::debug!("{:#?}", ret);
+
+    ret
+}
+
 use std::fmt::{Display, Formatter};
 impl Display for HeaderList {
     fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
         for (key, val) in self.0.iter() {
-            write!(fmt, "{}: {}\r\n", key, val)?;
+            write!(fmt, "{}: {}\r\n", title_case(key), val)?;
         }
 
         Ok(())

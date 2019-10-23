@@ -39,6 +39,10 @@ lazy_static::lazy_static!{
             )
             .collect()
     };
+
+    static ref DEFAULT_LANGUAGE: String = {
+        "en".into()
+    };
 }
 
 pub static SERVER_NAME: &'static str = "Ruserv";
@@ -288,6 +292,13 @@ impl Response {
                         )
                 }
 
+                if let Some(ext) = path.extension() {
+                    headers.content_language(
+                        &map_lang(&ext.to_string_lossy())
+                            .unwrap_or(DEFAULT_LANGUAGE.clone())
+                    );
+                }
+
                 Self {
                     code: code,
                     headers: headers,
@@ -342,6 +353,13 @@ impl Response {
                 &map_file(path).to_string(),
                 ret_buff.len()
             );
+
+            if let Some(ext) = path.extension() {
+                headers.content_language(
+                    &map_lang(&ext.to_string_lossy())
+                        .unwrap_or(DEFAULT_LANGUAGE.clone())
+                );
+            }
 
             Ok(Self{
                 data: Some(ret_buff.into()),
@@ -689,11 +707,25 @@ fn map_file(file: &Path) -> Mime {
             "ko" |
             "ru" =>
                 map_file(&file.with_file_name(file.file_stem().unwrap())),
-            _ => 
+            _ =>
                 map_extension(&ext)
         }
     }else{
         APPLICATION_OCTET_STREAM
+    }
+}
+
+fn map_lang(ln: &str) -> Option<String> {
+    match ln {
+        "en" |
+        "es" |
+        "de" |
+        "ja" |
+        "ko" |
+        "ru" =>
+            Some(ln.into()),
+        _    =>
+            None
     }
 }
 
