@@ -122,14 +122,14 @@ impl FromStr for HeaderList {
                 let verb = req.remove(0);
                 let desc = req.remove(0);
 
-                let (key, val) = match verb.to_lowercase().as_str() {
+                let res: Option<(&str, &str)> = match verb.to_lowercase().as_str() {
                     CONNECTION => {
                         match desc.to_lowercase().as_str() {
                             connection::LONG_LIVED |
                             connection::PIPELINED  |
                             connection::CLOSE      |
                             connection::KEEP_ALIVE =>
-                                (CONNECTION, desc.to_lowercase()),
+                                Some((CONNECTION, &desc.to_lowercase())),
                             _ => 
                                 return Err(UnrecognizedParameterError{
                                     head:  CONNECTION.into(),
@@ -138,18 +138,13 @@ impl FromStr for HeaderList {
                         }
                     },
                     DATE => {
-                        desc.parse::<DateTime<Utc>>()
-                            .map_err(|_| {
-                                InvalidFormatError(
-                                    format!(
-                                        "invalid date format for {}: '{}'",
-                                        DATE,
-                                        desc
-                                    )
-                                )
-                            })?;
+                        let desc = desc.parse::<DateTime<Utc>>();
 
-                        (DATE, desc.into())
+                        if let Ok(desc) = desc {
+                            Some((DATE, &desc.to_string()))
+                        }else{
+                            None
+                        }
                     },
                     CONTENT_TYPE => {
                         desc.parse::<Mime>()
@@ -162,7 +157,7 @@ impl FromStr for HeaderList {
                                 )
                             })?;
 
-                        (CONTENT_TYPE.into(), desc.into())
+                        Some((CONTENT_TYPE.into(), desc.into()))
                     },
                     CONTENT_LENGTH => {
                         desc.parse::<usize>()
@@ -174,8 +169,8 @@ impl FromStr for HeaderList {
                                     )
                                 )
                             })?;
-                        
-                        (CONTENT_LENGTH.into(), desc.into())
+
+                        Some((CONTENT_LENGTH.into(), desc.into()))
                     },
                     LAST_MODIFIED => {
                         desc.parse::<DateTime<Utc>>()
@@ -189,47 +184,40 @@ impl FromStr for HeaderList {
                                 )
                             })?;
 
-                        (LAST_MODIFIED.into(), desc.into())
+                        Some((LAST_MODIFIED.into(), desc.into()))
                     },
                     IF_MODIFIED_SINCE => {
-                        Utc.datetime_from_str(
+                        let desc = Utc.datetime_from_str(
                                 desc.into(),
                                 "%a, %d %b %Y %T GMT"
-                            )
-                            .map_err(|_| {
-                                InvalidFormatError(
-                                    format!(
-                                        "invalid date format for {}: '{}'",
-                                        IF_MODIFIED_SINCE,
-                                        desc
-                                    )
-                                )
-                            })?;
+                            );
 
-                        (IF_MODIFIED_SINCE.into(), desc.into())
+                        if let Ok(desc) = desc {
+                            Some((IF_MODIFIED_SINCE.into(), desc.into()))
+                        }else{
+                            None
+                        }
                     },
                     IF_UNMODIFIED_SINCE => {
-                        Utc.datetime_from_str(
+                        let desc = Utc.datetime_from_str(
                                 desc.into(),
                                 "%a, %d %b %Y %T GMT"
-                            ).map_err(|_| {
-                                InvalidFormatError(
-                                    format!(
-                                        "invalid date format for {}: '{}'",
-                                        IF_UNMODIFIED_SINCE,
-                                        desc
-                                    )
-                                )
-                            })?;
+                            );
 
-                        (IF_UNMODIFIED_SINCE, desc.into())
+                        if let Ok(desc) = desc {
+                            Some((IF_UNMODIFIED_SINCE.into(), desc.into()))
+                        }else{
+                            None
+                        }
                     }
                     _ => {
-                        (verb.into(), desc.into())
+                        Some((verb.into(), desc.into()))
                     }
                 };
 
-                ret.insert(key.to_lowercase().into(), val.into());
+                if let Some((key, val)) = res {
+                    ret.insert(key.to_lowercase().into(), val.into());
+                }
             }
         }
 
