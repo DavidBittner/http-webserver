@@ -265,13 +265,8 @@ impl Response {
                             }
                         }
 
-                        let ext = path.extension()
-                            .unwrap_or(std::ffi::OsStr::new(""))
-                            .to_string_lossy();
-
                         headers.content(
-                            &map_extension(&ext)
-                                .to_string(),
+                            &map_file(path).to_string(),
                             meta.len() as usize
                         );
                     },
@@ -341,13 +336,10 @@ impl Response {
                 }
 
             }
-            let ext = path.extension()
-                .unwrap_or(std::ffi::OsStr::new(""))
-                .to_string_lossy();
 
             let mut headers = HeaderList::response_headers();
             headers.content(
-                &map_extension(&ext).to_string(),
+                &map_file(path).to_string(),
                 ret_buff.len()
             );
 
@@ -679,7 +671,33 @@ impl Response {
     }
 }
 
-fn map_extension<'a>(ext: &'a str) -> Mime {
+fn map_file(file: &Path) -> Mime {
+    use mime::*;
+
+    let ext = file.extension();
+
+    if let Some(ext) = ext {
+        let ext: String = ext.to_string_lossy()
+            .to_lowercase()
+            .into();
+
+        match ext.as_str() {
+            "en" |
+            "es" |
+            "de" |
+            "ja" |
+            "ko" |
+            "ru" =>
+                map_file(&file.with_file_name(file.file_stem().unwrap())),
+            _ => 
+                map_extension(&ext)
+        }
+    }else{
+        APPLICATION_OCTET_STREAM
+    }
+}
+
+fn map_extension(ext: &str) -> Mime {
     use mime::*;
 
     match ext.to_lowercase().as_str() {
