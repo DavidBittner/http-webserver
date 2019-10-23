@@ -312,75 +312,56 @@ impl SocketHandler {
         }
     }
 
-    fn check_modified_since(req: &Request, full_path: &Path) -> Option<Response> {
-        match req.headers.get_date(&headers::IF_MODIFIED_SINCE) {
-            Some(date) => {
-                let check_time: SystemTime = date.into();
-                match full_path.metadata() {
-                    Ok(meta) => {
-                        match meta.modified() {
-                            Ok(time) => {
-                                if check_time < time {
-                                    None
-                                }else{
-                                    return Some(
-                                        Response::not_modified(full_path)
-                                    );
-                                }
-                            },
-                            Err(err) => {
-                                warn!("couldn't retrieve last-modified date for file: '{}'", err);
-                                Some(Response::precondition_failed())
-
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        warn!(
-                            "couldn't retrieve metadata for file: '{}'",
-                            err
-                        );
-                        Some(Response::precondition_failed())
-                    }
-                }
-            },
-            None =>
+    fn file_modified(path: &Path) -> Option<SystemTime> {
+        if let Ok(meta) = path.metadata() {
+            if let Ok(modi) = meta.modified() {
+                Some(modi)
+            }else{
+                warn!(
+                    "modified date for file '{}' couldn't be retrieved",
+                    path.display()
+                );
                 None
+            }
+        }else{
+            warn!(
+                "metadata for file '{}' couldn't be retrieved",
+                path.display()
+            );
+            None
+        }
+    }
+
+    fn check_modified_since(req: &Request, full_path: &Path) -> Option<Response> {
+        if let Some(date) = req.headers.get_date(&headers::IF_MODIFIED_SINCE) {
+            let check_time: SystemTime = date.into();
+            let modi:       SystemTime = Self::file_modified(full_path)?;
+
+            //If the file has been modified after the check_time
+            //then that means we want to just retrieve it.
+            //If it hasn't, not changed.
+            if check_time < modi {
+                None
+            }else{
+                Some(Response::not_modified(full_path))
+            }
+        }else{
+            None
         }
     }
 
     fn check_unmodified_since(req: &Request, full_path: &Path) -> Option<Response> {
-        match req.headers.get_date(&IF_UNMODIFIED_SINCE) {
-            Some(date) => {
-                let check_time: SystemTime = date.into();
-                match full_path.metadata() {
-                    Ok(meta) => {
-                        match meta.modified() {
-                            Ok(time) => {
-                                if check_time >= time {
-                                    None
-                                }else{
-                                    Some(Response::precondition_failed())
-                                }
-                            },
-                            Err(err) => {
-                                warn!("couldn't retrieve last-modified date for file: '{}'", err);
-                                Some(Response::precondition_failed())
+        if let Some(date) = req.headers.get_date(&headers::IF_MODIFIED_SINCE) {
+            let check_time: SystemTime = date.into();
+            let modi:       SystemTime = Self::file_modified(full_path)?;
 
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        warn!(
-                            "couldn't retrieve metadata for file: '{}'",
-                            err
-                        );
-                        Some(Response::precondition_failed())
-                    }
-                }
-            },
-            None =>
+            if check_time >= modi {
                 None
+            }else{
+                Some(Response::not_modified(full_path))
+            }
+        }else{
+            None
         }
     }
 

@@ -3,7 +3,7 @@
 /// to get a direct mutable reference to an internal value.
 /// You can only modify headers through the various setter functions
 /// to make sure that they are not set to arbitrary strings.
-/// The usage is as follows: 
+/// The usage is as follows:
 /// ```rust
 /// let headers = "Connection: close\r\nhost: localhost:80"
 /// let headers: HeaderList = headers.parse()
@@ -22,6 +22,7 @@ use std::collections::HashMap;
 macro_rules! define_const {
     { $($vn:ident = $st:literal),+ } => {
         $(
+            #[allow(dead_code)]
             pub const $vn: &'static str = $st;
         )+
     }
@@ -130,7 +131,7 @@ impl FromStr for HeaderList {
                             connection::CLOSE      |
                             connection::KEEP_ALIVE =>
                                 Some((CONNECTION, desc.to_lowercase())),
-                            _ => 
+                            _ =>
                                 return Err(UnrecognizedParameterError{
                                     head:  CONNECTION.into(),
                                     param: desc.into()
@@ -250,7 +251,7 @@ impl HeaderList {
                 "%a, %d %b %Y %T GMT"
             );
 
-        date.ok() 
+        date.ok()
     }
 
     /// A helper method for when specifying the content type

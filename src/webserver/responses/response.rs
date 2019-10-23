@@ -428,9 +428,17 @@ impl Response {
         };
 
         if temp.is_dir() {
-            headers.location(format!("{}/", new_path.display()));
+            if temp.is_absolute() {
+                headers.location(format!("{}/", new_path.display()));
+            }else{
+                headers.location(format!("/{}/", new_path.display()));
+            }
         }else{
-            headers.location(new_path.display().to_string());
+            if temp.is_absolute() {
+                headers.location(format!("{}", new_path.display()));
+            }else{
+                headers.location(format!("/{}", new_path.display()));
+            }
         }
 
         Self {
