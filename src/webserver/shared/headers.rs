@@ -18,6 +18,9 @@ use chrono::prelude::*;
 use mime::*;
 use std::collections::HashMap;
 
+pub mod range;
+pub use range::*;
+
 /// Used to define a constant in the form of a header.
 macro_rules! define_const {
     { $($vn:ident = $st:literal),+ } => {
@@ -258,7 +261,8 @@ impl HeaderList {
                 "%a, %d %b %Y %T GMT"
             );
 
-        date.ok()
+        Some(date
+            .expect("date existed in hashmap, but wasnt a valid format"))
     }
 
     /// A helper method for when specifying the content type
@@ -344,6 +348,10 @@ impl HeaderList {
             Some(val) => Some(val),
             None      => None
         }
+    }
+
+    pub fn has(&self, what: &str) -> bool {
+        self.0.get(what).is_some()
     }
 
     fn format_date(date: &DateTime<Utc>) -> String {

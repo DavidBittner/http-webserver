@@ -242,10 +242,121 @@ impl Response {
         }
     }
 
-    pub fn file_response(path: &Path) -> Self {
+    fn file_response(path: &Path) -> Self {
         use std::fs;
-
         let mut headers = HeaderList::response_headers();
+
+        match std::fs::File::open(path) {
+            Ok(file) => {
+                let code = StatusCode::Ok;
+
+                match fs::metadata(path) {
+                    Ok(meta) => {
+                        let time = meta.modified();
+                        match time {
+                            Ok(time) => {
+                                use chrono::{DateTime, Utc};
+                                let time: DateTime<Utc> = time.into();
+                                headers.last_modified(&time);
+                            },
+                            Err(err) => {
+                                error!("error occured while retrieving modified time: '{}'", err);
+                                return Self::internal_error();
+                            }
+                        }
+
+                        let ext = path.extension()
+                            .unwrap_or(std::ffi::OsStr::new(""))
+                            .to_string_lossy();
+
+                        headers.content(
+                            &map_extension(&ext)
+                                .to_string(),
+                            meta.len() as usize
+                        );
+                    },
+                    Err(err) => {
+                        error!("error occurred retrieving metadata: '{}'", err);
+                        return Self::forbidden();
+                    }
+                }
+
+                let etag = file_etag(path);
+                match etag {
+                    Ok(etag) =>
+                        headers.etag(&etag),
+                    Err(err) =>
+                        warn!(
+                            "failed to generate etag for file '{}' err was: '{}'",
+                            path.display(),
+                            err
+                        )
+                }
+
+                Self {
+                    code: code,
+                    headers: headers,
+                    data: Some(ResponseData::Stream(Box::new(file)))
+                }
+            },
+            Err(err) => {
+                error!(
+                    "error reading file '{}' to string: '{}'",
+                    path.display(),
+                    err
+                );
+                Response::not_found()
+            }
+        }
+    }
+
+    fn partial_content(path: &Path, ranges: RangeList) -> ioResult<Self> {
+        use std::fs::File;
+        use std::io::{Seek, SeekFrom, Read};
+
+        let mut ret_buff = Vec::new();
+        if !path.exists() {
+            Ok(Self::not_found())
+        }else{
+            let mut file = File::create(path)?;
+            for range in ranges.ranges.into_iter() {
+                if range.end.is_none() {
+                    if range.start < 0 {
+                        file.seek(SeekFrom::End(range.start))?;
+                        file.read_to_end(&mut ret_buff)?;
+                    }else{
+                        file.seek(SeekFrom::Start(range.start as u64))?;
+                        file.read_to_end(&mut ret_buff)?;
+                    }
+                }else{
+                    let mut temp_buff = vec![
+                        0;
+                        (range.end.unwrap() - range.start) as usize
+                    ];
+
+                    file.seek(SeekFrom::Start(range.start as u64))?;
+                    file.read(&mut temp_buff)?;
+
+                    ret_buff.append(&mut temp_buff);
+                }
+
+            }
+
+            let mut headers = HeaderList::response_headers();
+            headers.content(
+                &mime::APPLICATION_OCTET_STREAM.to_string(),
+                ret_buff.len()
+            );
+
+            Ok(Self{
+                data: Some(ret_buff.into()),
+                headers: headers,
+                code: StatusCode::PartialContent
+            })
+        }
+    }
+
+    pub fn path_response(path: &Path, req: &Request) -> Self {
         for redir in REDIRECTS.iter() {
             let temp = path
                 .strip_prefix(
@@ -289,8 +400,9 @@ impl Response {
                         let canon = temp.canonicalize();
                         match canon {
                             Ok(path) => {
-                                return Response::file_response(
-                                    &path
+                                return Response::path_response(
+                                    &path,
+                                    req
                                 );
                             },
                             Err(err) => {
@@ -302,71 +414,39 @@ impl Response {
                 }
 
                 return Response::directory_listing(path);
+            }else if req.headers.has(RANGE) {
+                use std::io::ErrorKind::*;
+
+                let range_str = req.headers.get(RANGE)
+                    .unwrap();
+
+                let ranges: Result<RangeList, _> = range_str.parse();
+                match ranges {
+                    Ok(ranges) =>
+                        match Self::partial_content(path, ranges) {
+                            Ok(resp) => resp,
+                            Err(err) => match err.kind() {
+                                NotFound         => Self::not_found(),
+                                PermissionDenied => Self::forbidden(),
+                                _                => Self::internal_error()
+                            }
+                        }
+                    Err(err)   => {
+                        warn!("issue parsing ranges '{}', err was: '{}'",
+                            range_str,
+                            err
+                        );
+                        Self::internal_error()
+                    }
+                }
             }else{
                 return Response::redirect(
                     &path,
                     StatusCode::MovedPermanently
                 );
             }
-        }
-
-        match fs::read(path) {
-            Ok(buff) => {
-                let code = StatusCode::Ok;
-
-                match fs::metadata(path) {
-                    Ok(meta) => {
-                        let time = meta.modified();
-                        match time {
-                            Ok(time) => {
-                                use chrono::{DateTime, Utc};
-                                let time: DateTime<Utc> = time.into();
-                                headers.last_modified(&time);
-                            },
-                            Err(err) => {
-                                error!("error occured while retrieving modified time: '{}'", err);
-                                return Self::internal_error();
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        error!("error occurred retrieving metadata: '{}'", err);
-                        return Self::forbidden();
-                    }
-                }
-
-                let ext = path.extension()
-                    .unwrap_or(std::ffi::OsStr::new(""))
-                    .to_string_lossy();
-
-                headers.content(&map_extension(&ext).to_string(), buff.len());
-
-                let etag = file_etag(path);
-                match etag {
-                    Ok(etag) =>
-                        headers.etag(&etag),
-                    Err(err) =>
-                        warn!(
-                            "failed to generate etag for file '{}' err was: '{}'",
-                            path.display(),
-                            err
-                        )
-                }
-
-                Self {
-                    code: code,
-                    headers: headers,
-                    data: Some(buff.into())
-                }
-            },
-            Err(err) => {
-                error!(
-                    "error reading file '{}' to string: '{}'",
-                    path.display(),
-                    err
-                );
-                Response::not_found()
-            }
+        }else{
+            Self::file_response(path)
         }
     }
 

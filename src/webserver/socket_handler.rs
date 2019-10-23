@@ -304,7 +304,7 @@ impl SocketHandler {
                 if url.clone() == comp {
                     SocketHandler::log_response()
                 }else{
-                    Response::file_response(&url)
+                    Response::path_response(&url, req)
                 }
             }
         }else{
