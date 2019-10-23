@@ -342,6 +342,37 @@ impl HeaderList {
         );
     }
 
+    pub fn content_range(&mut self, ranges: &RangeList, total: Option<usize>) {
+        let st = if let Some((min, max)) = ranges.get_bounds() {
+            format!(
+                "{} {}-{}/{}",
+                ranges.unit,
+                min,
+                max,
+                if let Some(total) = total {
+                    total.to_string()
+                }else{
+                    "*".into()
+                }
+            )
+        }else{
+            format!(
+                "{} */{}",
+                ranges.unit,
+                if let Some(total) = total {
+                    total.to_string()
+                }else{
+                    "*".into()
+                }
+            )
+        };
+
+        self.0.insert(
+            CONTENT_RANGE.into(),
+            st
+        );
+    }
+
     /// Sets the last modified header
     pub fn last_modified(&mut self, time: &DateTime<Utc>) {
         self.0.insert(

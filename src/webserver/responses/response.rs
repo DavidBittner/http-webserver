@@ -325,7 +325,7 @@ impl Response {
             Ok(Self::not_found())
         }else{
             let mut file = File::open(path)?;
-            for range in ranges.ranges.into_iter() {
+            for range in ranges.ranges.iter() {
                 if range.end.is_none() {
                     if range.start < 0 {
                         file.seek(SeekFrom::End(range.start))?;
@@ -353,6 +353,9 @@ impl Response {
                 &map_file(path).to_string(),
                 ret_buff.len()
             );
+
+            let len = path.metadata()?.len();
+            headers.content_range(&ranges, Some(len as usize));
 
             if let Some(ext) = path.extension() {
                 headers.content_language(

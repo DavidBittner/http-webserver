@@ -73,6 +73,23 @@ pub struct RangeList{
     pub unit:   String
 }
 
+impl RangeList {
+    pub fn get_bounds(&self) -> Option<(usize, usize)> {
+        if self.ranges.len() > 1 {
+            None
+        }else{
+            if self.ranges[0].end.is_none() {
+                None
+            }else{
+                Some((
+                    self.ranges[0].start as usize,
+                    self.ranges[1].end.unwrap() as usize
+                ))
+            }
+        }
+    }
+}
+
 impl FromStr for RangeList {
     type Err = RangeError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
