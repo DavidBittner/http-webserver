@@ -343,7 +343,7 @@ impl SocketHandler {
             //If it hasn't, not changed.
             let temp: DateTime<Utc> = modi.into();
             debug!("check: {} modified: {}", date, temp);
-            if check_time <= modi {
+            if check_time < modi {
                 debug!("has been modified");
                 None
             }else{

@@ -174,18 +174,19 @@ impl FromStr for HeaderList {
                         Some((CONTENT_LENGTH.into(), desc.into()))
                     },
                     LAST_MODIFIED => {
-                        desc.parse::<DateTime<Utc>>()
-                            .map_err(|_| {
-                                InvalidFormatError(
-                                    format!(
-                                        "invalid date format for {}: '{}'",
-                                        LAST_MODIFIED,
-                                        desc
-                                    )
-                                )
-                            })?;
+                        let desc = Utc.datetime_from_str(
+                                desc.into(),
+                                "%a, %d %b %Y %T GMT"
+                            );
 
-                        Some((LAST_MODIFIED.into(), desc.into()))
+                        if let Ok(date) = desc {
+                            Some((
+                                LAST_MODIFIED.into(),
+                                Self::format_date(&date)
+                            ))
+                        }else{
+                            None
+                        }
                     },
                     IF_MODIFIED_SINCE => {
                         let desc = Utc.datetime_from_str(
@@ -193,8 +194,11 @@ impl FromStr for HeaderList {
                                 "%a, %d %b %Y %T GMT"
                             );
 
-                        if let Ok(desc) = desc {
-                            Some((IF_MODIFIED_SINCE.into(), desc.to_string()))
+                        if let Ok(date) = desc {
+                            Some((
+                                IF_MODIFIED_SINCE.into(),
+                                Self::format_date(&date)
+                            ))
                         }else{
                             None
                         }
@@ -205,8 +209,11 @@ impl FromStr for HeaderList {
                                 "%a, %d %b %Y %T GMT"
                             );
 
-                        if let Ok(desc) = desc {
-                            Some((IF_UNMODIFIED_SINCE.into(), desc.to_string()))
+                        if let Ok(date) = desc {
+                            Some((
+                                IF_UNMODIFIED_SINCE.into(),
+                                Self::format_date(&date)
+                            ))
                         }else{
                             None
                         }
