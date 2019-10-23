@@ -337,12 +337,17 @@ impl SocketHandler {
             let check_time: SystemTime = date.into();
             let modi:       SystemTime = Self::file_modified(full_path)?;
 
+            use chrono::{DateTime, Utc};
             //If the file has been modified after the check_time
             //then that means we want to just retrieve it.
             //If it hasn't, not changed.
-            if check_time < modi {
+            let temp: DateTime<Utc> = modi.into();
+            debug!("check: {} modified: {}", date, temp);
+            if check_time <= modi {
+                debug!("has been modified");
                 None
             }else{
+                debug!("hasn't been modified");
                 Some(Response::not_modified(full_path))
             }
         }else{
@@ -351,7 +356,7 @@ impl SocketHandler {
     }
 
     fn check_unmodified_since(req: &Request, full_path: &Path) -> Option<Response> {
-        if let Some(date) = req.headers.get_date(&headers::IF_MODIFIED_SINCE) {
+        if let Some(date) = req.headers.get_date(&headers::IF_UNMODIFIED_SINCE) {
             let check_time: SystemTime = date.into();
             let modi:       SystemTime = Self::file_modified(full_path)?;
 
