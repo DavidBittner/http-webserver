@@ -38,7 +38,7 @@ fn main() -> io::Result<()> {
 
     pretty_env_logger::init_custom_env("SERV_LOG");
 
-    trace!(
+    debug!(
         "initialized with config: \n{:#?}\n",
         CONFIG
             .clone()

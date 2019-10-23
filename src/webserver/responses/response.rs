@@ -429,15 +429,15 @@ impl Response {
 
         if temp.is_dir() {
             if temp.is_absolute() {
-                headers.location(format!("{}/", new_path.display()));
-            }else{
                 headers.location(format!("/{}/", new_path.display()));
+            }else{
+                headers.location(format!("{}/", new_path.display()));
             }
         }else{
             if temp.is_absolute() {
-                headers.location(format!("{}", new_path.display()));
-            }else{
                 headers.location(format!("/{}", new_path.display()));
+            }else{
+                headers.location(format!("{}", new_path.display()));
             }
         }
 
