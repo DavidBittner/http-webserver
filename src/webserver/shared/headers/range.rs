@@ -83,7 +83,7 @@ impl RangeList {
             }else{
                 Some((
                     self.ranges[0].start as usize,
-                    self.ranges[1].end.unwrap() as usize
+                    self.ranges[0].end.unwrap() as usize
                 ))
             }
         }

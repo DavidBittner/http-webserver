@@ -418,7 +418,6 @@ fn title_case(s: &str) -> String {
         );
     }
     ret.push_str(&s[ret.len()..s.len()]);
-    log::debug!("{:#?}", ret);
 
     ret
 }
