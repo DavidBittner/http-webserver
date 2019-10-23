@@ -351,7 +351,7 @@ impl Response {
             let mut headers = HeaderList::response_headers();
             headers.content(
                 &map_file(path).to_string(),
-                ret_buff.len()
+                ret_buff.len()+1
             );
 
             let len = path.metadata()?.len();
