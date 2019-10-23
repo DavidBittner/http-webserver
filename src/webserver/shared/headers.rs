@@ -122,14 +122,14 @@ impl FromStr for HeaderList {
                 let verb = req.remove(0);
                 let desc = req.remove(0);
 
-                let res: Option<(&str, &str)> = match verb.to_lowercase().as_str() {
+                let res: Option<(&str, String)> = match verb.to_lowercase().as_str() {
                     CONNECTION => {
                         match desc.to_lowercase().as_str() {
                             connection::LONG_LIVED |
                             connection::PIPELINED  |
                             connection::CLOSE      |
                             connection::KEEP_ALIVE =>
-                                Some((CONNECTION, &desc.to_lowercase())),
+                                Some((CONNECTION, desc.to_lowercase())),
                             _ => 
                                 return Err(UnrecognizedParameterError{
                                     head:  CONNECTION.into(),
@@ -141,7 +141,7 @@ impl FromStr for HeaderList {
                         let desc = desc.parse::<DateTime<Utc>>();
 
                         if let Ok(desc) = desc {
-                            Some((DATE, &desc.to_string()))
+                            Some((DATE, desc.to_string()))
                         }else{
                             None
                         }
@@ -193,7 +193,7 @@ impl FromStr for HeaderList {
                             );
 
                         if let Ok(desc) = desc {
-                            Some((IF_MODIFIED_SINCE.into(), desc.into()))
+                            Some((IF_MODIFIED_SINCE.into(), desc.to_string()))
                         }else{
                             None
                         }
@@ -205,7 +205,7 @@ impl FromStr for HeaderList {
                             );
 
                         if let Ok(desc) = desc {
-                            Some((IF_UNMODIFIED_SINCE.into(), desc.into()))
+                            Some((IF_UNMODIFIED_SINCE.into(), desc.to_string()))
                         }else{
                             None
                         }
