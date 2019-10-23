@@ -335,9 +335,10 @@ impl Response {
                         file.read_to_end(&mut ret_buff)?;
                     }
                 }else{
+                    //Plus 1 because it's right inclusive
                     let mut temp_buff = vec![
                         0;
-                        (range.end.unwrap() - range.start) as usize
+                        ((range.end.unwrap() - range.start) as usize)+1
                     ];
 
                     file.seek(SeekFrom::Start(range.start as u64))?;
@@ -351,7 +352,7 @@ impl Response {
             let mut headers = HeaderList::response_headers();
             headers.content(
                 &map_file(path).to_string(),
-                ret_buff.len()+1
+                ret_buff.len()
             );
 
             let len = path.metadata()?.len();
