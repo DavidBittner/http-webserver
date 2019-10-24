@@ -602,8 +602,6 @@ impl Response {
                         match err {
                             NotAcceptable        => 
                                 Self::not_acceptable(),
-                            NoneError            => 
-                                Self::internal_error(),
                             MultipleResponses(list) => {
                                 let mut headers = 
                                     HeaderList::response_headers();
