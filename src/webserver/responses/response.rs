@@ -559,8 +559,10 @@ impl Response {
                 if let Some(mut list) = list {
                     if list.len() > 1 {
                         Self::multiple_choices(HeaderList::response_headers())
-                    }else{
+                    }else if list.len() == 1 {
                         Self::file_response(&list.pop().unwrap())
+                    }else {
+                        Self::not_found()
                     }
                 }else{
                     Self::not_found()

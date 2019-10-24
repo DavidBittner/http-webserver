@@ -60,7 +60,7 @@ impl<T: FromStr> FromStr for RatedEntry<T> {
                 .unwrap_or(0.);
 
             Ok(Self {
-                entry: pieces[1].parse()?,
+                entry: pieces[0].parse()?,
                 rating: Some((val * 1000.) as i32)
             })
         }
