@@ -420,7 +420,7 @@ impl SocketHandler {
         let buff: Vec<u8> = buff.into();
 
         let mut headers = HeaderList::response_headers();
-        headers.content(&mime::TEXT_PLAIN.to_string(), buff.len());
+        headers.content(&mime::TEXT_PLAIN.to_string(), None, buff.len());
 
         Response {
             code: StatusCode::Ok,

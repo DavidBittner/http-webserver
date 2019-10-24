@@ -121,7 +121,11 @@ impl Response {
         match data {
             Ok(string) => {
                 let data: Vec<_> = string.into();
-                headers.content("text/html".into(), data.len());
+                headers.content(
+                    "text/html".into(),
+                    None,
+                    data.len()
+                );
                 headers.chunked_encoding();
 
                 Self {
@@ -274,7 +278,7 @@ impl Response {
         let req_data = format!("{}", req);
         let req_data: Vec<u8> = req_data.into();
 
-        headers.content("message/http", req_data.len());
+        headers.content("message/http", None, req_data.len());
 
         Self {
             code: StatusCode::Ok,
@@ -306,8 +310,10 @@ impl Response {
                             }
                         }
 
+                        let desc = map_file(path);
                         headers.content(
-                            &map_file(path).typ.to_string(),
+                            &desc.typ.to_string(),
+                            desc.charset,
                             meta.len() as usize
                         );
                     },
@@ -336,6 +342,10 @@ impl Response {
 
                 if let Some(enc) = desc.enc {
                     headers.content_encoding(&enc);
+                }
+
+                if let Some(charset) = desc.charset {
+                    headers.content_charset(charset);
                 }
 
                 Self {
@@ -393,6 +403,7 @@ impl Response {
             let mut headers = HeaderList::response_headers();
             headers.content(
                 &desc.typ.to_string(),
+                desc.charset,
                 ret_buff.len()
             );
 
@@ -431,6 +442,10 @@ impl Response {
             req.headers.get(ACCEPT_ENCODING).unwrap_or("")
         ).unwrap();
 
+        let charset: RankedEntryList<String> = RankedEntryList::new_list(
+            req.headers.get(ACCEPT_CHARSET).unwrap_or("")
+        ).unwrap();
+
         if types.has_zeroes()     ||
            encodings.has_zeroes() ||
            langs.has_zeroes()
@@ -465,6 +480,15 @@ impl Response {
 
         let paths = langs.filter(paths, |path, entry| {
             *entry == map_file(path).lang
+        });
+
+        let paths = charset.filter(paths, |path, entry| {
+            let desc = map_file(path).charset;
+            if let Some(charset) = desc {
+                charset == *entry  
+            }else{
+                false
+            }
         });
 
         let mut paths = encodings.filter(paths, |path, entry| {
@@ -630,7 +654,7 @@ impl Response {
                     Ok(string) => {
                         let data: Vec<_> = string.into();
 
-                        headers.content("text/html", data.len());
+                        headers.content("text/html", None, data.len());
                         headers.chunked_encoding();
 
                         let etag = dir_etag(path);
@@ -843,7 +867,8 @@ impl Response {
 struct FileDescriptor {
     pub typ:  Mime,
     pub lang: String,
-    pub enc:  Option<String>
+    pub enc:  Option<String>,
+    pub charset: Option<String>
 }
 
 fn map_file(file: &Path) -> FileDescriptor {
@@ -852,10 +877,12 @@ fn map_file(file: &Path) -> FileDescriptor {
     let mut ret_desc = FileDescriptor {
         typ: APPLICATION_OCTET_STREAM,
         lang: DEFAULT_LANGUAGE.clone(),
-        enc:  None
+        enc:  None,
+        charset: None
     };
 
     map_lang(file, &mut ret_desc);
+    map_charset(file, &mut ret_desc);
     map_encoding(file, &mut ret_desc);
     map_extension(file, &mut ret_desc);
 
@@ -879,7 +906,7 @@ fn map_lang(path: &Path, desc: &mut FileDescriptor) {
                 if let Some(stem) = path.file_stem() {
                     let stem = PathBuf::from(stem);
 
-                    map_lang(&stem, desc);
+                    map_charset(&stem, desc);
                     map_encoding(&stem, desc);
                     map_extension(&stem, desc);
                 }
@@ -906,7 +933,7 @@ fn map_encoding(path: &Path, desc: &mut FileDescriptor) {
                     let stem = PathBuf::from(stem);
 
                     map_lang(&stem, desc);
-                    map_encoding(&stem, desc);
+                    map_charset(&stem, desc);
                     map_extension(&stem, desc);
                 }
                 None
@@ -956,7 +983,7 @@ fn map_extension(path: &Path, desc: &mut FileDescriptor) {
 
                     map_lang(&stem, desc);
                     map_encoding(&stem, desc);
-                    map_extension(&stem, desc);
+                    map_charset(&stem, desc);
                 }
                 None
             }
@@ -966,6 +993,34 @@ fn map_extension(path: &Path, desc: &mut FileDescriptor) {
             desc.typ = typ;
         }
     }
+}
+
+fn map_charset(path: &Path, desc: &mut FileDescriptor) {
+    if let Some(ext) = path.extension() {
+        let ext: String = ext.to_string_lossy()
+            .into();
+
+        let charset = match ext.as_str() {
+            "jis"    => Some("iso-2022-jp"),
+            "koi8-r" => Some("koi8-r"),
+            "euc-kr" => Some("euc-kr"),
+            _           => {
+                if let Some(stem) = path.file_stem() {
+                    let stem = PathBuf::from(stem);
+
+                    map_lang(&stem, desc);
+                    map_encoding(&stem, desc);
+                    map_extension(&stem, desc);
+                }
+                None
+            }
+        };
+
+        if let Some(charset) = charset {
+            desc.charset = Some(charset.into()); 
+        }
+    }
+
 }
 
 fn format_alternates(paths: Vec<(u32, PathBuf)>) -> String {
@@ -981,6 +1036,10 @@ fn format_alternates(paths: Vec<(u32, PathBuf)>) -> String {
                 desc.lang
             )
         );
+
+        if let Some(charset) = desc.charset {
+            ret.push_str(&format!(" {{charset {}}}", charset));
+        }
 
         ret.push_str("},");
     }

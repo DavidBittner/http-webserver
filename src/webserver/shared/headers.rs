@@ -278,7 +278,7 @@ impl HeaderList {
 
     /// A helper method for when specifying the content type
     /// and length of a response.
-    pub fn content(&mut self, typ: &str, len: usize) {
+    pub fn content(&mut self, typ: &str, enc: Option<String>, len: usize) {
         debug_assert!(typ.parse::<Mime>().is_ok());
 
         self.0.insert(
@@ -286,16 +286,30 @@ impl HeaderList {
             len.to_string()
         );
 
-        self.0.insert(
-            CONTENT_TYPE.into(),
-            typ.into()
-        );
+        if let Some(enc) = enc {
+            self.0.insert(
+                CONTENT_TYPE.into(),
+                format!("{}; {}", typ, enc),
+            );
+        }else{
+            self.0.insert(
+                CONTENT_TYPE.into(),
+                typ.into()
+            );
+        }
     }
 
     pub fn content_language(&mut self, lang: &str) {
         self.0.insert(
             CONTENT_LANGUAGE.into(),
             lang.into()
+        );
+    }
+
+    pub fn content_charset(&mut self, charset: String) {
+        self.0.insert(
+            CONTENT_ENCODING.into(),
+            charset.into()
         );
     }
 
