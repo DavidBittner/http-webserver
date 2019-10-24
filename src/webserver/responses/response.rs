@@ -307,6 +307,10 @@ impl Response {
                     );
                 }
 
+                if let Some(enc) = map_encoding(path) {
+                    headers.content_encoding(&enc);
+                }
+
                 Self {
                     code: code,
                     headers: headers,
@@ -812,16 +816,12 @@ fn map_file(file: &Path) -> Mime {
             .to_lowercase()
             .into();
 
-        match ext.as_str() {
-            "en" |
-            "es" |
-            "de" |
-            "ja" |
-            "ko" |
-            "ru" =>
-                map_file(&file.with_file_name(file.file_stem().unwrap())),
-            _ =>
-                map_extension(&ext)
+        if let Some(_) = map_lang(&ext) {
+            map_file(&file.with_file_name(file.file_stem().unwrap()))
+        }else if let Some(_) = map_encoding(file) {
+            map_file(&file.with_file_name(file.file_stem().unwrap()))
+        }else{
+            map_extension(&ext)
         }
     }else{
         APPLICATION_OCTET_STREAM
@@ -839,6 +839,18 @@ fn map_lang(ln: &str) -> Option<String> {
             Some(ln.into()),
         _    =>
             None
+    }
+}
+
+fn map_encoding(path: &Path) -> Option<String> {
+    let ext: String = path.extension()?
+        .to_string_lossy()
+        .into();
+
+    match ext.as_str() {
+        "Z" | "gz" => Some(headers::encoding::GZIP.into()),
+        "zip"      => Some(headers::encoding::COMPRESS.into()),
+        _          => None
     }
 }
 

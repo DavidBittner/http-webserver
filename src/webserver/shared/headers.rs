@@ -79,6 +79,13 @@ pub mod connection {
     }
 }
 
+pub mod encoding {
+    define_const! {
+        GZIP     = "gzip",
+        COMPRESS = "compress" 
+    }
+}
+
 /// A wrapper around a hashmap that provides
 /// convienience functions for dealing with headers.
 #[derive(Debug, PartialEq, Default)]
@@ -374,6 +381,19 @@ impl HeaderList {
             CONTENT_RANGE.into(),
             st
         );
+    }
+
+    pub fn content_encoding(&mut self, enc: &str) {
+        match enc {
+            encoding::COMPRESS |
+            encoding::GZIP =>
+                {self.0.insert(
+                    CONTENT_ENCODING.into(),
+                    enc.into()
+                );},
+            _ =>
+                log::warn!("invalid encoding type: '{}'", enc)
+        };
     }
 
     /// Sets the last modified header
