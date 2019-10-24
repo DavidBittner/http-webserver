@@ -397,6 +397,10 @@ impl HeaderList {
         };
     }
 
+    pub fn alternates(&mut self, s: String) {
+        self.0.insert(ALTERNATES.into(), s.into());
+    }
+
     /// Sets the last modified header
     pub fn last_modified(&mut self, time: &DateTime<Utc>) {
         self.0.insert(

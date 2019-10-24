@@ -602,10 +602,16 @@ impl Response {
                                 Self::not_acceptable(),
                             NoneError            => 
                                 Self::internal_error(),
-                            MultipleResponses(_) => 
+                            MultipleResponses(list) => {
+                                let mut headers = 
+                                    HeaderList::response_headers();
+                                let alt = format_alternates(list);
+                                headers.alternates(alt);
+
                                 Self::multiple_choices(
-                                    HeaderList::response_headers()
-                                ),
+                                    headers
+                                )
+                            },
                             _                    =>
                                 Self::not_found()
                         }
@@ -960,4 +966,25 @@ fn map_extension(path: &Path, desc: &mut FileDescriptor) {
             desc.typ = typ;
         }
     }
+}
+
+fn format_alternates(paths: Vec<(u32, PathBuf)>) -> String {
+    let mut ret = String::new();
+    for (score, path) in paths.into_iter() {
+        let desc = map_file(&path);
+        ret.push_str(
+            &format!(
+                "{{{:?} {} {{type {}}} {{language {}}}",
+                path.file_name().unwrap(),
+                score as f32 / 1000.,
+                desc.typ.to_string(),
+                desc.lang
+            )
+        );
+
+        ret.push_str("},");
+    }
+    ret.pop();
+
+    ret
 }
