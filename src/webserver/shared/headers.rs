@@ -19,7 +19,10 @@ use mime::*;
 use std::collections::HashMap;
 
 pub mod range;
+pub mod rated_entry;
+
 pub use range::*;
+pub use rated_entry::*;
 
 /// Used to define a constant in the form of a header.
 macro_rules! define_const {

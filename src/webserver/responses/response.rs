@@ -176,6 +176,14 @@ impl Response {
         )
     }
 
+    pub fn multiple_choices(headers: HeaderList) -> Self {
+        Response::error(
+            StatusCode::MultipleChoice,
+            "Multiple resources matched the query.",
+            headers
+        )
+    }
+
     pub fn not_modified(loc: &Path) -> Self {
         let mut headers = HeaderList::response_headers();
 
@@ -373,6 +381,81 @@ impl Response {
         }
     }
 
+    fn best_choice(path: &Path, req: &Request) -> Option<Vec<PathBuf>> {
+        let mut ret = Vec::new();
+        let stub = path.file_stem();
+
+        let types: Vec<RatedEntry<Mime>> =
+            RatedEntry::new_list(req.headers.get(ACCEPT).unwrap_or(""))
+            .ok()?;
+
+        let langs: Vec<RatedEntry<String>> =
+            RatedEntry::new_list(req.headers.get(ACCEPT_LANGUAGE).unwrap_or(""))
+            .ok()?;
+
+        let parent = path.parent().unwrap();
+
+        let mut paths = Vec::new();
+        for file in std::fs::read_dir(parent).ok()?
+        {
+            if file.is_err() {
+                continue;
+            }
+
+            let file_path = file.unwrap().path();
+            if path.is_dir() {
+                continue;
+            }
+
+            let path_mime = map_file(&file_path);
+            if stub != file_path.file_stem() {
+                continue;
+            }
+
+            for typ in types.iter() {
+                if typ.entry.type_() == path_mime.type_() ||
+                   typ.entry.type_() == "*"
+                {
+                    if typ.entry.subtype() == "*" ||
+                       typ.entry.subtype() == path_mime.subtype()
+                    {
+                        paths.push((typ.rating.unwrap_or(0), file_path.clone()));
+                    }
+                }
+            }
+        }
+        
+        for (score, path) in paths.into_iter() {
+            let lang_ext = path.extension()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or("".into());
+
+            if langs.is_empty() {
+                ret.push((
+                    score,
+                    path
+                ));
+            }else{
+                for lang in langs.iter() {
+                    if lang.entry == lang_ext {
+                        ret.push((
+                            score + lang.rating.unwrap_or(0),
+                            path
+                        ));
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        ret.sort_by(|(score_a, _), (score_b, _)| score_a.cmp(score_b));
+
+        Some(ret.into_iter()
+            .map(|(_, path)| path)
+            .collect())
+    }
+
     pub fn path_response(path: &Path, req: &Request) -> Self {
         for redir in REDIRECTS.iter() {
             let temp = path
@@ -469,7 +552,20 @@ impl Response {
                 }
             }
         }else{
-            Self::file_response(path)
+            if path.exists() {
+                Self::file_response(path)
+            }else{
+                let list = Self::best_choice(path, req);
+                if let Some(mut list) = list {
+                    if list.len() > 1 {
+                        Self::multiple_choices(HeaderList::response_headers())
+                    }else{
+                        Self::file_response(&list.pop().unwrap())
+                    }
+                }else{
+                    Self::not_found()
+                }
+            }
         }
     }
 
