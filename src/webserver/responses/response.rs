@@ -1,22 +1,22 @@
 mod templates;
 use templates::*;
 
-use num_traits::ToPrimitive;
 use crate::webserver::socket_handler::etag::*;
-
-use mime::Mime;
-use std::path::{Path, PathBuf};
-use log::*;
-use tera::Tera;
-
-use crate::CONFIG;
 use crate::webserver::socket_handler::ROOT;
-use crate::webserver::shared::*;
 use crate::webserver::requests::Request;
 use super::status_code::StatusCode;
+use crate::webserver::shared::*;
 use super::redirect::*;
+use crate::CONFIG;
 
+use std::path::{Path, PathBuf};
+use std::io::{Write, Cursor};
 use std::io::Result as ioResult;
+
+use num_traits::ToPrimitive;
+use mime::Mime;
+use log::*;
+use tera::Tera;
 
 lazy_static::lazy_static!{
     static ref TERA: Tera = {
@@ -38,16 +38,79 @@ lazy_static::lazy_static!{
             )
             .collect()
     };
+
+    static ref DEFAULT_LANGUAGE: String = {
+        "en".into()
+    };
 }
 
 pub static SERVER_NAME: &'static str = "Ruserv";
 pub static SERVER_VERS: &'static str = env!("CARGO_PKG_VERSION");
 
-#[derive(Debug, PartialEq)]
+pub static CHUNK_SIZE: usize = 2048;
+
+enum NegotiationError {
+    IoError(std::io::Error),
+    MultipleResponses(Vec<(u32, PathBuf)>),
+    NoMatches,
+    NotAcceptable,
+    //NoneError
+}
+
+impl From<std::io::Error> for NegotiationError {
+    fn from(err: std::io::Error) -> Self {
+        NegotiationError::IoError(err)
+    }
+}
+
+/*
+impl From<std::option::NoneError> for NegotiationError {
+    fn from(_: std::option::NoneError) -> Self {
+        NegotiationError::NoneError
+    }
+}
+*/
+
+pub enum ResponseData {
+    Buffer(Vec<u8>),
+    Stream(Box<dyn std::io::Read>)
+}
+
+impl Into<ResponseData> for Vec<u8> {
+    fn into(self) -> ResponseData {
+        ResponseData::Buffer(self)
+    }
+}
+
+impl From<Box<dyn std::io::Read>> for ResponseData {
+    fn from(oth: Box<dyn std::io::Read>) -> Self {
+        ResponseData::Stream(oth)
+    }
+}
+
+use std::fmt::{
+    Debug,
+    Formatter,
+    Result as fmtResult
+};
+impl Debug for ResponseData {
+    fn fmt(&self, fmt: &mut Formatter) -> fmtResult {
+        use ResponseData::*;
+
+        match self {
+            Buffer(buff) =>
+                write!(fmt, "Buffer([{}])", buff.len()),
+            Stream(_) =>
+                write!(fmt, "Stream(?)")
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Response {
     pub code: StatusCode,
     pub headers: HeaderList,
-    pub data: Option<Vec<u8>>
+    pub data: Option<ResponseData>
 }
 
 impl Response {
@@ -58,15 +121,17 @@ impl Response {
         match data {
             Ok(string) => {
                 let data: Vec<_> = string.into();
-                headers.content_len  = Some(data.len());
-                headers.content_type = Some("text/html"
-                    .parse()
-                    .unwrap());
+                headers.content(
+                    "text/html".into(),
+                    None,
+                    data.len()
+                );
+                headers.chunked_encoding();
 
                 Self {
                     code: code,
                     headers: headers,
-                    data: Some(data)
+                    data: Some(data.into())
                 }
             },
             Err(_) => {
@@ -125,11 +190,21 @@ impl Response {
 
     pub fn timed_out() -> Self {
         let mut headers = HeaderList::response_headers();
-        headers.connection = Some(Connection::Close);
+        headers.connection(
+            connection::CLOSE.into()
+        );
 
         Response::error(
             StatusCode::RequestTimeout,
             "The request timed out.",
+            headers
+        )
+    }
+
+    pub fn multiple_choices(headers: HeaderList) -> Self {
+        Response::error(
+            StatusCode::MultipleChoice,
+            "Multiple resources matched the query.",
             headers
         )
     }
@@ -151,11 +226,9 @@ impl Response {
         };
 
         if temp.is_dir() {
-            headers.location = Some(
-                PathBuf::from(format!("{}/", new_path.display()))
-            );
+            headers.location(format!("{}/", new_path.display()));
         }else{
-            headers.location = Some(new_path.into());
+            headers.location(format!("{}", new_path.display()));
         }
 
         Self {
@@ -173,15 +246,24 @@ impl Response {
         )
     }
 
-    pub fn options_response(_path: &Path) -> Self {
-        let mut methods = Vec::new();
-        methods.push(Method::Trace);
-        methods.push(Method::Options);
-        methods.push(Method::Get);
-        methods.push(Method::Head);
+    pub fn not_acceptable() -> Self {
+        Response::error(
+            StatusCode::NotAcceptable,
+            "The only file found could not match the request.",
+            HeaderList::response_headers()
+        )
+    }
 
+    pub fn options_response(_path: &Path) -> Self {
         let mut headers = HeaderList::response_headers();
-        headers.allow = Some(methods);
+        headers.allow(
+            &[
+                Method::Post,
+                Method::Get,
+                Method::Trace,
+                Method::Head
+            ]
+        );
 
         Self {
             code: StatusCode::Ok,
@@ -196,20 +278,247 @@ impl Response {
         let req_data = format!("{}", req);
         let req_data: Vec<u8> = req_data.into();
 
-        headers.content_type = Some("message/http".parse().unwrap());
-        headers.content_len  = Some(req_data.len());
+        headers.content("message/http", None, req_data.len());
 
         Self {
             code: StatusCode::Ok,
             headers: headers,
-            data: Some(req_data)
+            data: Some(req_data.into())
         }
     }
 
-    pub fn file_response(path: &Path) -> Self {
+    fn file_response(path: &Path) -> Self {
         use std::fs;
-
         let mut headers = HeaderList::response_headers();
+
+        match std::fs::File::open(path) {
+            Ok(file) => {
+                let code = StatusCode::Ok;
+
+                match fs::metadata(path) {
+                    Ok(meta) => {
+                        let time = meta.modified();
+                        match time {
+                            Ok(time) => {
+                                use chrono::{DateTime, Utc};
+                                let time: DateTime<Utc> = time.into();
+                                headers.last_modified(&time);
+                            },
+                            Err(err) => {
+                                error!("error occured while retrieving modified time: '{}'", err);
+                                return Self::internal_error();
+                            }
+                        }
+
+                        let desc = map_file(path);
+                        headers.content(
+                            &desc.typ.to_string(),
+                            desc.charset,
+                            meta.len() as usize
+                        );
+                    },
+                    Err(err) => {
+                        error!("error occurred retrieving metadata: '{}'", err);
+                        return Self::forbidden();
+                    }
+                }
+
+                let etag = file_etag(path);
+                match etag {
+                    Ok(etag) =>
+                        headers.etag(&etag),
+                    Err(err) =>
+                        warn!(
+                            "failed to generate etag for file '{}' err was: '{}'",
+                            path.display(),
+                            err
+                        )
+                }
+
+                let desc = map_file(path);
+                headers.content_language(
+                    &desc.lang
+                );
+
+                if let Some(enc) = desc.enc {
+                    headers.content_encoding(&enc);
+                }
+
+                if let Some(charset) = desc.charset {
+                    headers.content_charset(charset);
+                }
+
+                Self {
+                    code: code,
+                    headers: headers,
+                    data: Some(ResponseData::Stream(Box::new(file)))
+                }
+            },
+            Err(err) => {
+                error!(
+                    "error reading file '{}' to string: '{}'",
+                    path.display(),
+                    err
+                );
+                Response::not_found()
+            }
+        }
+    }
+
+    fn partial_content(path: &Path, ranges: RangeList) -> ioResult<Self> {
+        use std::fs::File;
+        use std::io::{Seek, SeekFrom, Read};
+
+        let mut ret_buff = Vec::new();
+        if !path.exists() {
+            Ok(Self::not_found())
+        }else{
+            let mut file = File::open(path)?;
+            for range in ranges.ranges.iter() {
+                if range.end.is_none() {
+                    if range.start < 0 {
+                        file.seek(SeekFrom::End(range.start))?;
+                        file.read_to_end(&mut ret_buff)?;
+                    }else{
+                        file.seek(SeekFrom::Start(range.start as u64))?;
+                        file.read_to_end(&mut ret_buff)?;
+                    }
+                }else{
+                    //Plus 1 because it's right inclusive
+                    let mut temp_buff = vec![
+                        0;
+                        ((range.end.unwrap() - range.start) as usize)+1
+                    ];
+
+                    file.seek(SeekFrom::Start(range.start as u64))?;
+                    file.read(&mut temp_buff)?;
+
+                    ret_buff.append(&mut temp_buff);
+                }
+
+            }
+
+            let desc = map_file(path);
+
+            let mut headers = HeaderList::response_headers();
+            headers.content(
+                &desc.typ.to_string(),
+                desc.charset,
+                ret_buff.len()
+            );
+
+            let len = path.metadata()?.len();
+            headers.content_range(&ranges, Some(len as usize));
+
+            headers.content_language(
+                &desc.lang
+            );
+
+            Ok(Self{
+                data: Some(ret_buff.into()),
+                headers: headers,
+                code: StatusCode::PartialContent
+            })
+        }
+    }
+
+    fn best_choice(path: &Path, req: &Request) -> Result<Vec<PathBuf>, NegotiationError> {
+        let mut paths = Vec::new();
+        let stub: String = path.file_name().unwrap()
+            .to_string_lossy()
+            .into();
+
+        let root = path.parent().unwrap();
+
+        let types: RankedEntryList<Mime> = RankedEntryList::new_list(
+            req.headers.get(ACCEPT).unwrap_or("")
+        ).unwrap();
+
+        let langs: RankedEntryList<String> = RankedEntryList::new_list(
+            req.headers.get(ACCEPT_LANGUAGE).unwrap_or("")
+        ).unwrap();
+
+        let encodings: RankedEntryList<String> = RankedEntryList::new_list(
+            req.headers.get(ACCEPT_ENCODING).unwrap_or("")
+        ).unwrap();
+
+        let charset: RankedEntryList<String> = RankedEntryList::new_list(
+            req.headers.get(ACCEPT_CHARSET).unwrap_or("")
+        ).unwrap();
+
+        if types.has_zeroes()     ||
+           encodings.has_zeroes() ||
+           langs.has_zeroes()     ||
+           charset.has_zeroes()
+        {
+            return Err(NegotiationError::NotAcceptable);
+        }
+
+        for file in std::fs::read_dir(root)? {
+            if let Ok(file) = file {
+                let file_path = file.path();
+                if let Some(file_name) = file_path.file_stem() {
+                    let file_name: String = file_name.to_string_lossy()
+                        .into();
+                    if file_name.as_str().starts_with(&stub) {
+                        paths.push((0, file_path));
+                    }
+                }
+            }
+        }
+
+        let paths = types.filter(paths, |path, entry| {
+            let desc = map_file(path).typ;
+            if entry.type_() == desc.type_() ||
+               entry.type_() == "*"
+            {
+                entry.subtype() == "*" ||
+                entry.subtype() == desc.subtype()
+            }else{
+                false
+            }
+        });
+
+        let paths = langs.filter(paths, |path, entry| {
+            *entry == map_file(path).lang
+        });
+
+        let paths = charset.filter(paths, |path, entry| {
+            let desc = map_file(path).charset;
+            if let Some(charset) = desc {
+                charset == *entry  
+            }else{
+                false
+            }
+        });
+
+        let mut paths = encodings.filter(paths, |path, entry| {
+            *entry == map_file(path).enc
+                .unwrap_or("".into())
+        });
+
+        paths.sort_by(|(score_a, _), (score_b, _)| score_a.cmp(score_b));
+        if paths.len() >= 2 {
+            let (a, _) = paths[paths.len()-1];
+            let (b, _) = paths[paths.len()-2];
+
+            if a != b {
+                let temp = paths.pop().unwrap();
+                let mut paths = Vec::new();
+                paths.push(temp.1);
+
+                Ok(paths)
+            }else{
+                return Err(NegotiationError::MultipleResponses(paths));
+            }
+        }else if paths.len() == 1 {
+            Ok(paths.into_iter().map(|(_, path)| path).collect())
+        }else{
+            Err(NegotiationError::NoMatches)
+        }
+    }
+
+    pub fn path_response(path: &Path, req: &Request) -> Self {
         for redir in REDIRECTS.iter() {
             let temp = path
                 .strip_prefix(
@@ -253,8 +562,9 @@ impl Response {
                         let canon = temp.canonicalize();
                         match canon {
                             Ok(path) => {
-                                return Response::file_response(
-                                    &path
+                                return Response::path_response(
+                                    &path,
+                                    req
                                 );
                             },
                             Err(err) => {
@@ -272,64 +582,65 @@ impl Response {
                     StatusCode::MovedPermanently
                 );
             }
-        }
+        }else if req.headers.has(RANGE) {
+            use std::io::ErrorKind::*;
 
-        match fs::read(path) {
-            Ok(buff) => {
-                let code = StatusCode::Ok;
+            let range_str = req.headers.get(RANGE)
+                .unwrap();
 
-                match fs::metadata(path) {
-                    Ok(meta) => {
-                        let time = meta.modified();
-                        match time {
-                            Ok(time) => {
-                                let time = time.into();
-                                headers.last_modified = Some(time);
-                            },
-                            Err(err) => {
-                                error!("error occured while retrieving modified time: '{}'", err);
-                                return Self::internal_error();
+            let ranges: Result<RangeList, _> = range_str.parse();
+            match ranges {
+                Ok(ranges) =>
+                    match Self::partial_content(path, ranges) {
+                        Ok(resp) => resp,
+                        Err(err) => {
+                            error!(
+                                "error occurred while getting partial content: '{}'",
+                                err
+                            );
+                            match err.kind() {
+                                NotFound         => Self::not_found(),
+                                PermissionDenied => Self::forbidden(),
+                                _                => Self::internal_error()
                             }
                         }
-                    },
-                    Err(err) => {
-                        error!("error occurred retrieving metadata: '{}'", err);
-                        return Self::forbidden();
                     }
+                Err(err)   => {
+                    warn!("issue parsing ranges '{}', err was: '{}'",
+                        range_str,
+                        err
+                    );
+                    Self::internal_error()
                 }
-
-                let ext = path.extension()
-                    .unwrap_or(std::ffi::OsStr::new(""))
-                    .to_string_lossy();
-
-                headers.content_len  = Some(buff.len());
-                headers.content_type = Some(map_extension(&ext));
-
-                let etag = file_etag(path);
-                match etag {
-                    Ok(etag) =>
-                        headers.etag = Some(etag),
+            }
+        }else{
+            if path.exists() {
+                Self::file_response(path)
+            }else{
+                use NegotiationError::*;
+                let list = Self::best_choice(path, req);
+                match list {
+                    Ok(mut list) => {
+                        Self::file_response(&list.pop().unwrap())
+                    },
                     Err(err) =>
-                        warn!(
-                            "failed to generate etag for file '{}' err was: '{}'",
-                            path.display(),
-                            err
-                        )
-                }
+                        match err {
+                            NotAcceptable        => 
+                                Self::not_acceptable(),
+                            MultipleResponses(list) => {
+                                let mut headers = 
+                                    HeaderList::response_headers();
+                                let alt = format_alternates(list);
+                                headers.alternates(alt);
 
-                Self {
-                    code: code,
-                    headers: headers,
-                    data: Some(buff)
+                                Self::multiple_choices(
+                                    headers
+                                )
+                            },
+                            _                    =>
+                                Self::not_found()
+                        }
                 }
-            },
-            Err(err) => {
-                error!(
-                    "error reading file '{}' to string: '{}'",
-                    path.display(),
-                    err
-                );
-                Response::not_found()
             }
         }
     }
@@ -343,15 +654,14 @@ impl Response {
                 match data {
                     Ok(string) => {
                         let data: Vec<_> = string.into();
-                        headers.content_len  = Some(data.len());
-                        headers.content_type = Some("text/html"
-                            .parse()
-                            .unwrap());
+
+                        headers.content("text/html", None, data.len());
+                        headers.chunked_encoding();
 
                         let etag = dir_etag(path);
                         match etag {
                             Ok(etag) =>
-                                headers.etag = Some(etag),
+                                headers.etag(&etag),
                             Err(err) =>
                                 warn!("error generating etag for dir: '{}'", err)
                         }
@@ -359,7 +669,7 @@ impl Response {
                         Self {
                             code: StatusCode::Ok,
                             headers: headers,
-                            data: Some(data)
+                            data: Some(data.into())
                         }
                     },
                     Err(_) => {
@@ -393,11 +703,17 @@ impl Response {
         };
 
         if temp.is_dir() {
-            headers.location = Some(
-                PathBuf::from(format!("{}/", new_path.display()))
-            );
+            if temp.is_absolute() {
+                headers.location(format!("/{}/", new_path.display()));
+            }else{
+                headers.location(format!("{}/", new_path.display()));
+            }
         }else{
-            headers.location = Some(new_path.into());
+            if temp.is_absolute() {
+                headers.location(format!("/{}", new_path.display()));
+            }else{
+                headers.location(format!("{}", new_path.display()));
+            }
         }
 
         Self {
@@ -407,6 +723,44 @@ impl Response {
         }
     }
 
+    fn write_w_timeout<'a, T>(writer: &'a mut T, dat: &[u8]) -> ioResult<()>
+    where
+        T: std::io::Write + Sized
+    {
+        use super::super::socket_handler::WRITE_TIMEOUT;
+        use std::io::ErrorKind;
+        use std::time::Instant;
+
+        let mut start = Instant::now();
+
+        let mut at = 0;
+        while at < dat.len() {
+            if (Instant::now() - start) >= *WRITE_TIMEOUT {
+                return Err(std::io::Error::new(
+                    ErrorKind::TimedOut,
+                    "writing the response timed out"
+                ));
+            }else {
+                match writer.write(&dat[at..]) {
+                    Ok(siz) => {
+                        at += siz;
+                        start = Instant::now();
+                    },
+                    Err(err) =>
+                        match err.kind() {
+                            ErrorKind::WouldBlock =>
+                                continue,
+                            _                     =>
+                                return Err(err)
+                        }
+                }
+            }
+        }
+        writer.flush()?;
+
+        Ok(())
+    }
+
     pub fn write_self<'a, T>(self, writer: &'a mut T) -> ioResult<()>
     where
         T: std::io::Write + Sized
@@ -414,46 +768,283 @@ impl Response {
         let num = self.code.to_u16()
             .unwrap_or(0);
 
-        write!(writer, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
-        write!(writer, "{}\r\n", self.headers)?;
+        let mut write_buff = Vec::new();
+        write!(write_buff, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
+        write!(write_buff, "{}\r\n", self.headers)?;
+
+        Self::write_w_timeout(writer, &mut write_buff)?;
+
         match self.data {
             Some(dat) => {
-                std::io::copy(&mut dat.as_slice(), &mut *writer)?;
-                ()
+                use ResponseData::*;
+                match dat {
+                    Buffer(buff) =>
+                        Self::write_w_timeout(writer, &buff)?,
+                    Stream(mut stream) => {
+                        use std::io::ErrorKind;
+
+                        write_buff = vec![0; 2048];
+                        loop {
+                            match stream.read(&mut write_buff) {
+                                Ok(siz) => {
+                                    if siz == 0 {
+                                        break;
+                                    }else{
+                                        Self::write_w_timeout(writer, &write_buff[0..siz])?;
+                                    }
+                                },
+                                Err(err) =>
+                                    match err.kind() {
+                                        ErrorKind::WouldBlock =>
+                                            continue,
+                                        _                     =>
+                                            return Err(err)
+                                    }
+                            }
+                        }
+                    }
+                };
             },
             None => ()
         }
         Ok(())
     }
+
+    pub fn write_chunked<'a, T>(self, writer: &'a mut T) -> ioResult<()>
+    where
+        T: std::io::Write + Sized
+    {
+        let num = self.code.to_u16()
+            .unwrap_or(0);
+
+        let mut write_buff = Vec::new();
+        write!(&mut write_buff, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
+        write!(&mut write_buff, "{}\r\n", self.headers)?;
+
+        Self::write_w_timeout(writer, &write_buff)?;
+
+        match self.data {
+            Some(data) => {
+                let mut reader: Box<dyn std::io::Read> = match data {
+                    ResponseData::Buffer(buff) =>
+                        Box::new(Cursor::new(buff)),
+                    ResponseData::Stream(stream) =>
+                        Box::new(stream)
+                };
+
+                write_buff.clear();
+                reader.read_to_end(&mut write_buff)?;
+
+                for chunk in write_buff.chunks(CHUNK_SIZE) {
+                    Self::write_w_timeout(
+                        writer,
+                        &format!("{:x}\r\n", chunk.len())
+                            .into_bytes()
+                    )?;
+                    Self::write_w_timeout(
+                        writer,
+                        &chunk
+                    )?;
+                    Self::write_w_timeout(
+                        writer,
+                        &format!("\r\n")
+                            .into_bytes()
+                    )?;
+                }
+
+                Self::write_w_timeout(
+                    writer,
+                    &format!("0\r\n\r\n")
+                        .into_bytes()
+                )?;
+                Ok(())
+            },
+            None =>
+                Ok(())
+        }
+    }
 }
 
-fn map_extension<'a>(ext: &'a str) -> Mime {
+struct FileDescriptor {
+    pub typ:  Mime,
+    pub lang: String,
+    pub enc:  Option<String>,
+    pub charset: Option<String>
+}
+
+fn map_file(file: &Path) -> FileDescriptor {
     use mime::*;
 
-    match ext.to_lowercase().as_str() {
-        "js"  => APPLICATION_JAVASCRIPT,
+    let mut ret_desc = FileDescriptor {
+        typ: APPLICATION_OCTET_STREAM,
+        lang: DEFAULT_LANGUAGE.clone(),
+        enc:  None,
+        charset: None
+    };
 
-        "htm"  |
-        "html" => TEXT_HTML,
-        "css"  => TEXT_CSS,
-        "xml"  => TEXT_XML,
-        "txt"  => TEXT_PLAIN,
+    map_lang(file, &mut ret_desc);
+    map_charset(file, &mut ret_desc);
+    map_encoding(file, &mut ret_desc);
+    map_extension(file, &mut ret_desc);
 
-        "jpg"  |
-        "jpeg" => IMAGE_JPEG,
-        "png"  => IMAGE_PNG,
-        "gif"  => IMAGE_GIF,
-        "pdf"  => APPLICATION_PDF,
+    ret_desc
+}
 
-        "ppt"  |
-        "pptx" => "application/vnd.ms-powerpoint"
-                    .parse()
-                    .expect("failed to parse mime type"),
-        "doc"  |
-        "docx" => "application/vnd.ms-word"
-                    .parse()
-                    .expect("failed to parse mime type"),
+fn map_lang(path: &Path, desc: &mut FileDescriptor) {
+    if let Some(ext) = path.extension() {
+        let ext: String = ext.to_string_lossy()
+            .into();
 
-        _ => APPLICATION_OCTET_STREAM
+        let lang = match ext.as_str() {
+            "en" |
+            "es" |
+            "de" |
+            "ja" |
+            "ko" |
+            "ru" =>
+                Some(ext.into()),
+            _    => {
+                if let Some(stem) = path.file_stem() {
+                    let stem = PathBuf::from(stem);
+
+                    map_charset(&stem, desc);
+                    map_encoding(&stem, desc);
+                    map_extension(&stem, desc);
+                }
+                None
+            }
+        };
+
+        if let Some(lang) = lang {
+            desc.lang = lang;
+        }
     }
+}
+
+fn map_encoding(path: &Path, desc: &mut FileDescriptor) {
+    if let Some(ext) = path.extension() {
+        let ext: String = ext.to_string_lossy()
+            .into();
+
+        let enc = match ext.as_str() {
+            "gz"        => Some(headers::encoding::GZIP.into()),
+            "zip" | "Z" => Some(headers::encoding::COMPRESS.into()),
+            _           => {
+                if let Some(stem) = path.file_stem() {
+                    let stem = PathBuf::from(stem);
+
+                    map_lang(&stem, desc);
+                    map_charset(&stem, desc);
+                    map_extension(&stem, desc);
+                }
+                None
+            }
+        };
+
+        if let Some(enc) = enc {
+            desc.enc = Some(enc); 
+        }
+    }
+
+}
+
+fn map_extension(path: &Path, desc: &mut FileDescriptor) {
+    use mime::*;
+
+    if let Some(ext) = path.extension() {
+        let ext = ext.to_string_lossy();
+
+        let typ = match ext.to_lowercase().as_str() {
+            "js"  => Some(APPLICATION_JAVASCRIPT),
+
+            "htm"  |
+            "html" => Some(TEXT_HTML),
+            "css"  => Some(TEXT_CSS),
+            "xml"  => Some(TEXT_XML),
+            "txt"  => Some(TEXT_PLAIN),
+
+            "jpg"  |
+            "jpeg" => Some(IMAGE_JPEG),
+            "png"  => Some(IMAGE_PNG),
+            "gif"  => Some(IMAGE_GIF),
+            "pdf"  => Some(APPLICATION_PDF),
+
+            "ppt"  |
+            "pptx" => Some("application/vnd.ms-powerpoint"
+                        .parse()
+                        .expect("failed to parse mime type")),
+            "doc"  |
+            "docx" => Some("application/vnd.ms-word"
+                        .parse()
+                        .expect("failed to parse mime type")),
+
+            _ => {
+                if let Some(stem) = path.file_stem() {
+                    let stem = PathBuf::from(stem);
+
+                    map_lang(&stem, desc);
+                    map_encoding(&stem, desc);
+                    map_charset(&stem, desc);
+                }
+                None
+            }
+        };
+
+        if let Some(typ) = typ {
+            desc.typ = typ;
+        }
+    }
+}
+
+fn map_charset(path: &Path, desc: &mut FileDescriptor) {
+    if let Some(ext) = path.extension() {
+        let ext: String = ext.to_string_lossy()
+            .into();
+
+        let charset = match ext.as_str() {
+            "jis"    => Some("iso-2022-jp"),
+            "koi8-r" => Some("koi8-r"),
+            "euc-kr" => Some("euc-kr"),
+            _           => {
+                if let Some(stem) = path.file_stem() {
+                    let stem = PathBuf::from(stem);
+
+                    map_lang(&stem, desc);
+                    map_encoding(&stem, desc);
+                    map_extension(&stem, desc);
+                }
+                None
+            }
+        };
+
+        if let Some(charset) = charset {
+            desc.charset = Some(charset.into()); 
+        }
+    }
+
+}
+
+fn format_alternates(paths: Vec<(u32, PathBuf)>) -> String {
+    let mut ret = String::new();
+    for (score, path) in paths.into_iter() {
+        let desc = map_file(&path);
+        ret.push_str(
+            &format!(
+                "{{{:?} {} {{type {}}} {{language {}}}",
+                path.file_name().unwrap(),
+                score as f32 / 1000.,
+                desc.typ.to_string(),
+                desc.lang
+            )
+        );
+
+        if let Some(charset) = desc.charset {
+            ret.push_str(&format!(" {{charset {}}}", charset));
+        }
+
+        ret.push_str("},");
+    }
+    ret.pop();
+
+    ret
 }

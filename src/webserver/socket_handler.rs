@@ -110,7 +110,7 @@ impl SocketHandler {
             let req = self.read_request();
 
             //If the response failed to be parsed, send a bad request
-            let mut resp = match &req {
+            let resp: Response = match &req {
                 Ok(req) => {
                     if req.ver != "HTTP/1.1" {
                         Response::unsupported_version()
@@ -158,35 +158,37 @@ impl SocketHandler {
                             return Ok(());
                         },
                         _ => {
-                            error!("{}", err);
+                            error!("error parsing request:\n\t{}", err);
                             Response::bad_request()
                         }
                     }
                 }
             };
 
-            let conn;
-            match req {
-                Ok(mut req) => {
+            let conn: String;
+            match &req {
+                Ok(req) => {
                     let entry = LogEntry::new(&self.addr, &req, &resp);
                     let mut list = LOG_LIST.write().unwrap();
                     list.push(entry);
 
-                    conn = req.headers.connection
-                        .get_or_insert(Connection::LongLived)
-                        .clone();
+                    conn = req.headers
+                        .get(headers::CONNECTION)
+                        .unwrap_or(connection::LONG_LIVED)
+                        .into()
                 },
                 Err(_) =>
-                    conn = resp.headers.connection
-                        .get_or_insert(Connection::Close)
-                        .clone()
+                    conn = resp.headers
+                        .get(headers::CONNECTION)
+                        .unwrap_or(connection::CLOSE)
+                        .into()
             };
 
             self.write_response(resp)?;
             trace!("response written to '{}'", self.addr);
 
-            match conn {
-                Connection::Close =>
+            match conn.to_lowercase().as_str() {
+                connection::CLOSE =>
                     break,
                 _ => ()
             };
@@ -253,36 +255,13 @@ impl SocketHandler {
     }
 
     fn write_response(&mut self, resp: Response) -> Result<()> {
-        use std::time::Instant;
-        use std::io::Write;
-
-        let mut buff = Vec::new();
-        resp.write_self(&mut buff)?;
-
-        let mut start = Instant::now();
-        while buff.len() > 0 &&
-              (Instant::now() - start) < *WRITE_TIMEOUT
-        {
-            match self.stream.write(&buff) {
-                Ok(siz) => {
-                    if siz == buff.len() {
-                        return Ok(())
-                    }else{
-                        buff.split_at(siz);
-                        start = Instant::now();
-                    }
-                },
-                Err(err) => {
-                    use std::io::ErrorKind;
-                    match err.kind() {
-                        ErrorKind::WouldBlock =>
-                            continue,
-                        _                     => 
-                            return Err(err.into())
-                    }
-                }
-            }
-        }
+        match resp.headers.is_chunked() {
+            true => {
+                resp.write_chunked(&mut self.stream)?;
+            },
+            false =>
+                resp.write_self(&mut self.stream)?
+        };
 
         Ok(())
     }
@@ -325,7 +304,7 @@ impl SocketHandler {
                 if url.clone() == comp {
                     SocketHandler::log_response()
                 }else{
-                    Response::file_response(&url)
+                    Response::path_response(&url, req)
                 }
             }
         }else{
@@ -333,85 +312,71 @@ impl SocketHandler {
         }
     }
 
-    fn check_modified_since(req: &Request, full_path: &Path) -> Option<Response> {
-        match req.headers.if_modified {
-            Some(date) => {
-                let check_time: SystemTime = date.into();
-                match full_path.metadata() {
-                    Ok(meta) => {
-                        match meta.modified() {
-                            Ok(time) => {
-                                if check_time < time {
-                                    None
-                                }else{
-                                    return Some(
-                                        Response::not_modified(full_path)
-                                    );
-                                }
-                            },
-                            Err(err) => {
-                                warn!("couldn't retrieve last-modified date for file: '{}'", err);
-                                Some(Response::precondition_failed())
-
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        warn!(
-                            "couldn't retrieve metadata for file: '{}'",
-                            err
-                        );
-                        Some(Response::precondition_failed())
-                    }
-                }
-            },
-            None =>
+    fn file_modified(path: &Path) -> Option<SystemTime> {
+        if let Ok(meta) = path.metadata() {
+            if let Ok(modi) = meta.modified() {
+                Some(modi)
+            }else{
+                warn!(
+                    "modified date for file '{}' couldn't be retrieved",
+                    path.display()
+                );
                 None
+            }
+        }else{
+            warn!(
+                "metadata for file '{}' couldn't be retrieved",
+                path.display()
+            );
+            None
+        }
+    }
+
+    fn check_modified_since(req: &Request, full_path: &Path) -> Option<Response> {
+        if let Some(date) = req.headers.get_date(&headers::IF_MODIFIED_SINCE) {
+            let check_time: SystemTime = date.into();
+            let modi:       SystemTime = Self::file_modified(full_path)?;
+
+            use chrono::{DateTime, Utc};
+            //If the file has been modified after the check_time
+            //then that means we want to just retrieve it.
+            //If it hasn't, not changed.
+            let temp: DateTime<Utc> = modi.into();
+            debug!("check: {} modified: {}", date, temp);
+            if check_time < modi {
+                debug!("has been modified");
+                None
+            }else{
+                debug!("hasn't been modified");
+                Some(Response::not_modified(full_path))
+            }
+        }else{
+            None
         }
     }
 
     fn check_unmodified_since(req: &Request, full_path: &Path) -> Option<Response> {
-        match req.headers.if_unmodified {
-            Some(date) => {
-                let check_time: SystemTime = date.into();
-                match full_path.metadata() {
-                    Ok(meta) => {
-                        match meta.modified() {
-                            Ok(time) => {
-                                if check_time >= time {
-                                    None
-                                }else{
-                                    Some(Response::precondition_failed())
-                                }
-                            },
-                            Err(err) => {
-                                warn!("couldn't retrieve last-modified date for file: '{}'", err);
-                                Some(Response::precondition_failed())
+        if let Some(date) = req.headers.get_date(&headers::IF_UNMODIFIED_SINCE) {
+            let check_time: SystemTime = date.into();
+            let modi:       SystemTime = Self::file_modified(full_path)?;
 
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        warn!(
-                            "couldn't retrieve metadata for file: '{}'",
-                            err
-                        );
-                        Some(Response::precondition_failed())
-                    }
-                }
-            },
-            None =>
+            if check_time >= modi {
                 None
+            }else{
+                Some(Response::not_modified(full_path))
+            }
+        }else{
+            None
         }
     }
 
     fn check_if_match(req: &Request, full_path: &Path) -> Option<Response> {
         use etag::*;
 
-        match &req.headers.if_match {
+        match &req.headers.get(IF_MATCH) {
             Some(etag) => {
                 let comp_etag = file_etag(full_path).ok()?;
-                if comp_etag == *etag {
+                if &comp_etag == *etag {
                     None
                 }else{
                     Some(Response::precondition_failed())
@@ -425,8 +390,11 @@ impl SocketHandler {
     fn check_if_none_match(req: &Request, full_path: &Path) -> Option<Response> {
         use etag::*;
 
-        match &req.headers.if_none_match {
+        match &req.headers.get(IF_NONE_MATCH) {
             Some(etags) => {
+                let etags: Vec<_> = etags.split(",")
+                    .collect();
+
                 let comp_etag = file_etag(full_path).ok()?;
                 for etag in etags.iter() {
                     if comp_etag == *etag {
@@ -451,14 +419,13 @@ impl SocketHandler {
 
         let buff: Vec<u8> = buff.into();
 
-        let mut headers      = HeaderList::response_headers();
-        headers.content_len  = Some(buff.len());
-        headers.content_type = Some(mime::TEXT_PLAIN);
+        let mut headers = HeaderList::response_headers();
+        headers.content(&mime::TEXT_PLAIN.to_string(), None, buff.len());
 
         Response {
             code: StatusCode::Ok,
             headers: headers,
-            data: Some(buff),
+            data: Some(buff.into()),
         }
     }
 
