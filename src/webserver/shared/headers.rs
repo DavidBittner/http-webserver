@@ -289,7 +289,7 @@ impl HeaderList {
         if let Some(enc) = enc {
             self.0.insert(
                 CONTENT_TYPE.into(),
-                format!("{}; {}", typ, enc),
+                format!("{}; charset={}", typ, enc),
             );
         }else{
             self.0.insert(

@@ -424,7 +424,7 @@ impl Response {
 
     fn best_choice(path: &Path, req: &Request) -> Result<Vec<PathBuf>, NegotiationError> {
         let mut paths = Vec::new();
-        let stub: String = path.file_stem().unwrap()
+        let stub: String = path.file_name().unwrap()
             .to_string_lossy()
             .into();
 
@@ -448,7 +448,8 @@ impl Response {
 
         if types.has_zeroes()     ||
            encodings.has_zeroes() ||
-           langs.has_zeroes()
+           langs.has_zeroes()     ||
+           charset.has_zeroes()
         {
             return Err(NegotiationError::NotAcceptable);
         }
@@ -456,7 +457,7 @@ impl Response {
         for file in std::fs::read_dir(root)? {
             if let Ok(file) = file {
                 let file_path = file.path();
-                if let Some(file_name) = file_path.file_name() {
+                if let Some(file_name) = file_path.file_stem() {
                     let file_name: String = file_name.to_string_lossy()
                         .into();
                     if file_name.as_str().starts_with(&stub) {
