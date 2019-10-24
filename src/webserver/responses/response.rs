@@ -54,7 +54,7 @@ enum NegotiationError {
     MultipleResponses(Vec<(u32, PathBuf)>),
     NoMatches,
     NotAcceptable,
-    NoneError
+    //NoneError
 }
 
 impl From<std::io::Error> for NegotiationError {
@@ -63,11 +63,13 @@ impl From<std::io::Error> for NegotiationError {
     }
 }
 
+/*
 impl From<std::option::NoneError> for NegotiationError {
     fn from(_: std::option::NoneError) -> Self {
         NegotiationError::NoneError
     }
 }
+*/
 
 pub enum ResponseData {
     Buffer(Vec<u8>),
@@ -411,23 +413,23 @@ impl Response {
 
     fn best_choice(path: &Path, req: &Request) -> Result<Vec<PathBuf>, NegotiationError> {
         let mut paths = Vec::new();
-        let stub: String = path.file_stem()?
+        let stub: String = path.file_stem().unwrap()
             .to_string_lossy()
             .into();
 
-        let root = path.parent()?;
+        let root = path.parent().unwrap();
 
         let types: RankedEntryList<Mime> = RankedEntryList::new_list(
             req.headers.get(ACCEPT).unwrap_or("")
-        ).ok()?;
+        ).unwrap();
 
         let langs: RankedEntryList<String> = RankedEntryList::new_list(
             req.headers.get(ACCEPT_LANGUAGE).unwrap_or("")
-        ).ok()?;
+        ).unwrap();
 
         let encodings: RankedEntryList<String> = RankedEntryList::new_list(
             req.headers.get(ACCEPT_ENCODING).unwrap_or("")
-        ).ok()?;
+        ).unwrap();
 
         if types.has_zeroes()     ||
            encodings.has_zeroes() ||
@@ -436,7 +438,7 @@ impl Response {
             return Err(NegotiationError::NotAcceptable);
         }
 
-        for file in std::fs::read_dir(root).ok()? {
+        for file in std::fs::read_dir(root)? {
             if let Ok(file) = file {
                 let file_path = file.path();
                 if let Some(file_name) = file_path.file_name() {
