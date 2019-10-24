@@ -1,3 +1,5 @@
+#![feature(try_trait)]
+
 use std::io;
 
 mod webserver;

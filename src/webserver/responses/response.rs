@@ -18,7 +18,6 @@ use mime::Mime;
 use log::*;
 use tera::Tera;
 
-
 lazy_static::lazy_static!{
     static ref TERA: Tera = {
         use crate::CONFIG;
@@ -49,6 +48,26 @@ pub static SERVER_NAME: &'static str = "Ruserv";
 pub static SERVER_VERS: &'static str = env!("CARGO_PKG_VERSION");
 
 pub static CHUNK_SIZE: usize = 2048;
+
+enum NegotiationError {
+    IoError(std::io::Error),
+    MultipleResponses(Vec<(u32, PathBuf)>),
+    NoMatches,
+    NotAcceptable,
+    NoneError
+}
+
+impl From<std::io::Error> for NegotiationError {
+    fn from(err: std::io::Error) -> Self {
+        NegotiationError::IoError(err)
+    }
+}
+
+impl From<std::option::NoneError> for NegotiationError {
+    fn from(_: std::option::NoneError) -> Self {
+        NegotiationError::NoneError
+    }
+}
 
 pub enum ResponseData {
     Buffer(Vec<u8>),
@@ -231,7 +250,7 @@ impl Response {
 
     pub fn options_response(_path: &Path) -> Self {
         let mut headers = HeaderList::response_headers();
-        headers.accept(
+        headers.allow(
             &[
                 Method::Post,
                 Method::Get,
@@ -378,11 +397,9 @@ impl Response {
             let len = path.metadata()?.len();
             headers.content_range(&ranges, Some(len as usize));
 
-            if let Some(ext) = path.extension() {
-                headers.content_language(
-                    &desc.lang
-                );
-            }
+            headers.content_language(
+                &desc.lang
+            );
 
             Ok(Self{
                 data: Some(ret_buff.into()),
@@ -392,11 +409,12 @@ impl Response {
         }
     }
 
-    fn best_choice(path: &Path, req: &Request) -> Option<Vec<PathBuf>> {
+    fn best_choice(path: &Path, req: &Request) -> Result<Vec<PathBuf>, NegotiationError> {
         let mut paths = Vec::new();
         let stub: String = path.file_stem()?
             .to_string_lossy()
             .into();
+
         let root = path.parent()?;
 
         let types: RankedEntryList<Mime> = RankedEntryList::new_list(
@@ -415,7 +433,7 @@ impl Response {
            encodings.has_zeroes() ||
            langs.has_zeroes()
         {
-            return None;
+            return Err(NegotiationError::NotAcceptable);
         }
 
         for file in std::fs::read_dir(root).ok()? {
@@ -459,12 +477,18 @@ impl Response {
 
             if a != b {
                 let temp = paths.pop().unwrap();
-                paths.clear();
-                paths.push(temp);
-            }
-        }
+                let mut paths = Vec::new();
+                paths.push(temp.1);
 
-        Some(paths.into_iter().map(|(_, path)| path).collect())
+                Ok(paths)
+            }else{
+                return Err(NegotiationError::MultipleResponses(paths));
+            }
+        }else if paths.len() == 1 {
+            Ok(paths.into_iter().map(|(_, path)| path).collect())
+        }else{
+            Err(NegotiationError::NoMatches)
+        }
     }
 
     pub fn path_response(path: &Path, req: &Request) -> Self {
@@ -566,17 +590,25 @@ impl Response {
             if path.exists() {
                 Self::file_response(path)
             }else{
+                use NegotiationError::*;
                 let list = Self::best_choice(path, req);
-                if let Some(mut list) = list {
-                    if list.len() > 1 {
-                        Self::multiple_choices(HeaderList::response_headers())
-                    }else if list.len() == 1 {
+                match list {
+                    Ok(mut list) => {
                         Self::file_response(&list.pop().unwrap())
-                    }else {
-                        Self::not_found()
-                    }
-                }else{
-                    Self::not_acceptable()
+                    },
+                    Err(err) =>
+                        match err {
+                            NotAcceptable        => 
+                                Self::not_acceptable(),
+                            NoneError            => 
+                                Self::internal_error(),
+                            MultipleResponses(_) => 
+                                Self::multiple_choices(
+                                    HeaderList::response_headers()
+                                ),
+                            _                    =>
+                                Self::not_found()
+                        }
                 }
             }
         }

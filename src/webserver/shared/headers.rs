@@ -39,6 +39,7 @@ define_const!{
     HOST                = "host",
     SERVER              = "server",
     DATE                = "date",
+    ALLOW               = "allow",
     CONTENT_TYPE        = "content-type",
     CONTENT_LENGTH      = "content-length",
     CONTENT_LANGUAGE    = "content-language",
@@ -315,7 +316,7 @@ impl HeaderList {
     }
 
     /// Sets the accept header from a list of methods
-    pub fn accept(&mut self, methods: &[Method]) {
+    pub fn allow(&mut self, methods: &[Method]) {
         let mut buff = String::new();
         for method in methods.iter() {
             buff.push_str(&method.to_string());
@@ -324,7 +325,7 @@ impl HeaderList {
         //remove the extra comma
         buff.remove(buff.len()-1);
 
-        self.0.insert(ACCEPT.into(), buff);
+        self.0.insert(ALLOW.into(), buff);
     }
 
     pub fn chunked_encoding(&mut self) {
