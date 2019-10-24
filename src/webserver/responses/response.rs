@@ -286,7 +286,7 @@ impl Response {
                         }
 
                         headers.content(
-                            &map_file(path).to_string(),
+                            &map_file(path).typ.to_string(),
                             meta.len() as usize
                         );
                     },
@@ -308,14 +308,12 @@ impl Response {
                         )
                 }
 
-                if let Some(ext) = path.extension() {
-                    headers.content_language(
-                        &map_lang(&ext.to_string_lossy())
-                            .unwrap_or(DEFAULT_LANGUAGE.clone())
-                    );
-                }
+                let desc = map_file(path);
+                headers.content_language(
+                    &desc.lang
+                );
 
-                if let Some(enc) = map_encoding(path) {
+                if let Some(enc) = desc.enc {
                     headers.content_encoding(&enc);
                 }
 
@@ -369,9 +367,11 @@ impl Response {
 
             }
 
+            let desc = map_file(path);
+
             let mut headers = HeaderList::response_headers();
             headers.content(
-                &map_file(path).to_string(),
+                &desc.typ.to_string(),
                 ret_buff.len()
             );
 
@@ -380,8 +380,7 @@ impl Response {
 
             if let Some(ext) = path.extension() {
                 headers.content_language(
-                    &map_lang(&ext.to_string_lossy())
-                        .unwrap_or(DEFAULT_LANGUAGE.clone())
+                    &desc.lang
                 );
             }
 
@@ -394,139 +393,78 @@ impl Response {
     }
 
     fn best_choice(path: &Path, req: &Request) -> Option<Vec<PathBuf>> {
-        let mut ret = Vec::new();
-        let stub = path.file_name();
-
-        let types: Vec<RatedEntry<Mime>> =
-            RatedEntry::new_list(req.headers.get(ACCEPT).unwrap_or(""))
-            .ok()?;
-
-        let langs: Vec<RatedEntry<String>> =
-            RatedEntry::new_list(req.headers.get(ACCEPT_LANGUAGE).unwrap_or(""))
-            .ok()?;
-
-        let parent = path.parent().unwrap();
-
         let mut paths = Vec::new();
-        for file in std::fs::read_dir(parent).ok()?
+        let stub: String = path.file_stem()?
+            .to_string_lossy()
+            .into();
+        let root = path.parent()?;
+
+        let types: RankedEntryList<Mime> = RankedEntryList::new_list(
+            req.headers.get(ACCEPT).unwrap_or("")
+        ).ok()?;
+
+        let langs: RankedEntryList<String> = RankedEntryList::new_list(
+            req.headers.get(ACCEPT_LANGUAGE).unwrap_or("")
+        ).ok()?;
+
+        let encodings: RankedEntryList<String> = RankedEntryList::new_list(
+            req.headers.get(ACCEPT_ENCODING).unwrap_or("")
+        ).ok()?;
+
+        if types.has_zeroes()     ||
+           encodings.has_zeroes() ||
+           langs.has_zeroes()
         {
-            if file.is_err() {
-                continue;
-            }
-
-            let file_path = file.unwrap().path();
-            if path.is_dir() {
-                continue;
-            }
-
-            let path_mime = map_file(&file_path);
-            if stub != file_path.file_stem() {
-                continue;
-            }
-
-            for typ in types.iter() {
-                if typ.entry.type_() == path_mime.type_() ||
-                   typ.entry.type_() == "*"
-                {
-                    if typ.entry.subtype() == "*" ||
-                       typ.entry.subtype() == path_mime.subtype()
-                    {
-                        paths.push((typ.rating.unwrap_or(0), file_path.clone()));
-                    }
-                }
-            }
+            return None;
         }
-        
-        for (score, path) in paths.into_iter() {
-            let lang_ext = path.extension()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or("".into());
 
-            if langs.is_empty() {
-                ret.push((
-                    score,
-                    path
-                ));
-            }else{
-                for lang in langs.iter() {
-                    if lang.entry == lang_ext {
-                        ret.push((
-                            score + lang.rating.unwrap_or(0),
-                            path
-                        ));
-
-                        break;
+        for file in std::fs::read_dir(root).ok()? {
+            if let Ok(file) = file {
+                let file_path = file.path();
+                if let Some(file_name) = file_path.file_name() {
+                    let file_name: String = file_name.to_string_lossy()
+                        .into();
+                    if file_name.as_str().starts_with(&stub) {
+                        paths.push((0, file_path));
                     }
                 }
             }
         }
 
-        ret.sort_by(|(score_a, _), (score_b, _)| score_a.cmp(score_b));
-        if ret.len() > 1 {
-            let (score_a, _) = &ret[ret.len()-1];
-            let (score_b, _) = &ret[ret.len()-2];
-
-            if score_a != score_b {
-                let temp = ret.pop().unwrap();
-                ret.clear();
-
-                ret.push(temp);
-            }
-        }
-
-        Some(ret.into_iter()
-            .map(|(_, path)| path)
-            .collect())
-    }
-
-    fn zeroes(path: &Path, req: &Request) -> Option<Self> {
-        let types: Vec<RatedEntry<Mime>> =
-            RatedEntry::new_list(req.headers.get(ACCEPT).unwrap_or(""))
-            .ok()?;
-        let encodings: Vec<RatedEntry<String>> =
-            RatedEntry::new_list(req.headers.get(ACCEPT_ENCODING).unwrap_or(""))
-            .ok()?;
-
-        let mime: Mime = map_file(path);
-        for typ in types.into_iter() {
-            if typ.entry.type_() == mime.type_() ||
-               typ.entry.type_() == "*"
+        let paths = types.filter(paths, |path, entry| {
+            let desc = map_file(path).typ;
+            if entry.type_() == desc.type_() ||
+               entry.type_() == "*"
             {
-                if typ.entry.subtype() == "*" ||
-                   typ.entry.subtype() == mime.subtype()
-                {
-                    if let Some(rati) = typ.rating {
-                        if rati == 0 {
-                            return Some(Self::not_acceptable());
-                        }
-                    }
-                }
+                entry.subtype() == "*" ||
+                entry.subtype() == desc.subtype()
+            }else{
+                false
             }
+        });
 
-        }
+        let paths = langs.filter(paths, |path, entry| {
+            *entry == map_file(path).lang
+        });
 
-        let langs: Vec<RatedEntry<String>> =
-            RatedEntry::new_list(req.headers.get(ACCEPT_LANGUAGE).unwrap_or(""))
-            .ok()?;
+        let mut paths = encodings.filter(paths, |path, entry| {
+            *entry == map_file(path).enc
+                .unwrap_or("".into())
+        });
 
-        let ext = path.extension()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or("".into());
+        paths.sort_by(|(score_a, _), (score_b, _)| score_a.cmp(score_b));
+        if paths.len() >= 2 {
+            let (a, _) = paths[paths.len()-1];
+            let (b, _) = paths[paths.len()-2];
 
-        let file_lang: String = map_lang(&ext)
-            .unwrap_or(DEFAULT_LANGUAGE.clone());
-
-        for lang in langs.into_iter() {
-            if lang.entry.to_lowercase() == file_lang {
-                if let Some(rati) = lang.rating {
-                    if rati == 0 {
-                        return Some(Self::not_acceptable());
-                    }
-                }
+            if a != b {
+                let temp = paths.pop().unwrap();
+                paths.clear();
+                paths.push(temp);
             }
         }
 
-        None
+        Some(paths.into_iter().map(|(_, path)| path).collect())
     }
 
     pub fn path_response(path: &Path, req: &Request) -> Self {
@@ -638,7 +576,7 @@ impl Response {
                         Self::not_found()
                     }
                 }else{
-                    Self::not_found()
+                    Self::not_acceptable()
                 }
             }
         }
@@ -864,81 +802,130 @@ impl Response {
     }
 }
 
-fn map_file(file: &Path) -> Mime {
+struct FileDescriptor {
+    pub typ:  Mime,
+    pub lang: String,
+    pub enc:  Option<String>
+}
+
+fn map_file(file: &Path) -> FileDescriptor {
     use mime::*;
 
-    let ext = file.extension();
+    let mut ret_desc = FileDescriptor {
+        typ: APPLICATION_OCTET_STREAM,
+        lang: DEFAULT_LANGUAGE.clone(),
+        enc:  None
+    };
 
-    if let Some(ext) = ext {
+    map_lang(file, &mut ret_desc);
+    map_encoding(file, &mut ret_desc);
+    map_extension(file, &mut ret_desc);
+
+    ret_desc
+}
+
+fn map_lang(path: &Path, desc: &mut FileDescriptor) {
+    if let Some(ext) = path.extension() {
         let ext: String = ext.to_string_lossy()
-            .to_lowercase()
             .into();
 
-        if let Some(_) = map_lang(&ext) {
-            map_file(&file.with_file_name(file.file_stem().unwrap()))
-        }else if let Some(_) = map_encoding(file) {
-            map_file(&file.with_file_name(file.file_stem().unwrap()))
-        }else{
-            map_extension(&ext)
+        let lang = match ext.as_str() {
+            "en" |
+            "es" |
+            "de" |
+            "ja" |
+            "ko" |
+            "ru" =>
+                Some(ext.into()),
+            _    => {
+                if let Some(stem) = path.file_stem() {
+                    let stem = PathBuf::from(stem);
+
+                    map_lang(&stem, desc);
+                    map_encoding(&stem, desc);
+                    map_extension(&stem, desc);
+                }
+                None
+            }
+        };
+
+        if let Some(lang) = lang {
+            desc.lang = lang;
         }
-    }else{
-        APPLICATION_OCTET_STREAM
     }
 }
 
-fn map_lang(ln: &str) -> Option<String> {
-    match ln {
-        "en" |
-        "es" |
-        "de" |
-        "ja" |
-        "ko" |
-        "ru" =>
-            Some(ln.into()),
-        _    =>
-            None
+fn map_encoding(path: &Path, desc: &mut FileDescriptor) {
+    if let Some(ext) = path.extension() {
+        let ext: String = ext.to_string_lossy()
+            .into();
+
+        let enc = match ext.as_str() {
+            "gz"        => Some(headers::encoding::GZIP.into()),
+            "zip" | "Z" => Some(headers::encoding::COMPRESS.into()),
+            _           => {
+                if let Some(stem) = path.file_stem() {
+                    let stem = PathBuf::from(stem);
+
+                    map_lang(&stem, desc);
+                    map_encoding(&stem, desc);
+                    map_extension(&stem, desc);
+                }
+                None
+            }
+        };
+
+        if let Some(enc) = enc {
+            desc.enc = Some(enc); 
+        }
     }
+
 }
 
-fn map_encoding(path: &Path) -> Option<String> {
-    let ext: String = path.extension()?
-        .to_string_lossy()
-        .into();
-
-    match ext.as_str() {
-        "gz"        => Some(headers::encoding::GZIP.into()),
-        "zip" | "Z" => Some(headers::encoding::COMPRESS.into()),
-        _           => None
-    }
-}
-
-fn map_extension(ext: &str) -> Mime {
+fn map_extension(path: &Path, desc: &mut FileDescriptor) {
     use mime::*;
 
-    match ext.to_lowercase().as_str() {
-        "js"  => APPLICATION_JAVASCRIPT,
+    if let Some(ext) = path.extension() {
+        let ext = ext.to_string_lossy();
 
-        "htm"  |
-        "html" => TEXT_HTML,
-        "css"  => TEXT_CSS,
-        "xml"  => TEXT_XML,
-        "txt"  => TEXT_PLAIN,
+        let typ = match ext.to_lowercase().as_str() {
+            "js"  => Some(APPLICATION_JAVASCRIPT),
 
-        "jpg"  |
-        "jpeg" => IMAGE_JPEG,
-        "png"  => IMAGE_PNG,
-        "gif"  => IMAGE_GIF,
-        "pdf"  => APPLICATION_PDF,
+            "htm"  |
+            "html" => Some(TEXT_HTML),
+            "css"  => Some(TEXT_CSS),
+            "xml"  => Some(TEXT_XML),
+            "txt"  => Some(TEXT_PLAIN),
 
-        "ppt"  |
-        "pptx" => "application/vnd.ms-powerpoint"
-                    .parse()
-                    .expect("failed to parse mime type"),
-        "doc"  |
-        "docx" => "application/vnd.ms-word"
-                    .parse()
-                    .expect("failed to parse mime type"),
+            "jpg"  |
+            "jpeg" => Some(IMAGE_JPEG),
+            "png"  => Some(IMAGE_PNG),
+            "gif"  => Some(IMAGE_GIF),
+            "pdf"  => Some(APPLICATION_PDF),
 
-        _ => APPLICATION_OCTET_STREAM
+            "ppt"  |
+            "pptx" => Some("application/vnd.ms-powerpoint"
+                        .parse()
+                        .expect("failed to parse mime type")),
+            "doc"  |
+            "docx" => Some("application/vnd.ms-word"
+                        .parse()
+                        .expect("failed to parse mime type")),
+
+            _ => {
+                if let Some(stem) = path.file_stem() {
+                    let stem = PathBuf::from(stem);
+
+                    map_lang(&stem, desc);
+                    map_encoding(&stem, desc);
+                    map_extension(&stem, desc);
+                }
+                None
+            }
+        };
+
+        if let Some(typ) = typ {
+            desc.typ = typ;
+        }
     }
 }

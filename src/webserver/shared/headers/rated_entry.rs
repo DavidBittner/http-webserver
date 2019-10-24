@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::path::{Path, PathBuf};
 use std::fmt::{
     Display,
     Formatter,
@@ -6,10 +7,13 @@ use std::fmt::{
 };
 
 #[derive(Debug)]
-pub struct RatedEntry<T: FromStr> {
+pub struct RankedEntry<T: FromStr> {
     pub entry: T,
-    pub rating: Option<i32>
+    pub rating: Option<u32>
 }
+
+#[derive(Debug)]
+pub struct RankedEntryList<T: FromStr>(Vec<RankedEntry<T>>);
 
 #[derive(Debug, PartialEq)]
 pub struct InvalidEntry(String);
@@ -21,10 +25,10 @@ impl Display for InvalidEntry {
     }
 }
 
-impl<T: FromStr> RatedEntry<T> {
-    pub fn new_list(s: &str) -> Result<Vec<T>, <T as FromStr>::Err> {
+impl<T: FromStr> RankedEntryList<T> {
+    pub fn new_list(s: &str) -> Result<Self, <T as FromStr>::Err> {
         if s.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Self(Vec::new()));
         }
 
         let mut ret = Vec::new();
@@ -36,11 +40,50 @@ impl<T: FromStr> RatedEntry<T> {
             ret.push(piece.parse()?);
         }
 
-        Ok(ret)
+        Ok(Self(ret))
+    }
+
+    pub fn filter<'a>(&self, paths: Vec<(u32, PathBuf)>, check: fn(&Path, &T) -> bool) -> Vec<(u32, PathBuf)> {
+        if self.0.len() == 0 {
+            return paths;
+        }
+
+        let mut ret = Vec::new();
+
+        for item in self.0.iter() {
+            for (score, path) in paths.iter() {
+                if let Some(rating) = item.rating {
+                    if rating == 0 {
+                        continue;
+                    }else{
+                        if check(&path, &item.entry) {
+                            ret.push((score + rating, path.clone()));
+                        }
+                    }
+                }else{
+                    if check(&path, &item.entry) {
+                        ret.push((*score, path.clone()));
+                    }
+                }
+            }
+        }
+
+        ret
+    }
+
+    pub fn has_zeroes(&self) -> bool {
+        for item in self.0.iter() {
+            if let Some(score) = item.rating {
+                if score == 0 {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
-impl<T: FromStr> FromStr for RatedEntry<T> {
+impl<T: FromStr> FromStr for RankedEntry<T> {
     type Err = <T as FromStr>::Err;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let pieces: Vec<_> = s.split(";")
@@ -61,7 +104,7 @@ impl<T: FromStr> FromStr for RatedEntry<T> {
 
             Ok(Self {
                 entry: pieces[0].parse()?,
-                rating: Some((val * 1000.) as i32)
+                rating: Some((val * 1000.) as u32)
             })
         }
     }
