@@ -450,6 +450,17 @@ impl Response {
         }
 
         ret.sort_by(|(score_a, _), (score_b, _)| score_a.cmp(score_b));
+        if ret.len() > 1 {
+            let (score_a, _) = &ret[ret.len()-1];
+            let (score_b, _) = &ret[ret.len()-2];
+
+            if score_a != score_b {
+                let temp = ret.pop().unwrap();
+                ret.clear();
+
+                ret.push(temp);
+            }
+        }
 
         Some(ret.into_iter()
             .map(|(_, path)| path)
