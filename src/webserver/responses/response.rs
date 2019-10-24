@@ -221,6 +221,14 @@ impl Response {
         )
     }
 
+    pub fn not_acceptable() -> Self {
+        Response::error(
+            StatusCode::NotAcceptable,
+            "The only file found could not match the request.",
+            HeaderList::response_headers()
+        )
+    }
+
     pub fn options_response(_path: &Path) -> Self {
         let mut headers = HeaderList::response_headers();
         headers.accept(
@@ -387,7 +395,7 @@ impl Response {
 
     fn best_choice(path: &Path, req: &Request) -> Option<Vec<PathBuf>> {
         let mut ret = Vec::new();
-        let stub = path.file_stem();
+        let stub = path.file_name();
 
         let types: Vec<RatedEntry<Mime>> =
             RatedEntry::new_list(req.headers.get(ACCEPT).unwrap_or(""))
@@ -469,6 +477,56 @@ impl Response {
         Some(ret.into_iter()
             .map(|(_, path)| path)
             .collect())
+    }
+
+    fn zeroes(path: &Path, req: &Request) -> Option<Self> {
+        let types: Vec<RatedEntry<Mime>> =
+            RatedEntry::new_list(req.headers.get(ACCEPT).unwrap_or(""))
+            .ok()?;
+        let encodings: Vec<RatedEntry<String>> =
+            RatedEntry::new_list(req.headers.get(ACCEPT_ENCODING).unwrap_or(""))
+            .ok()?;
+
+        let mime: Mime = map_file(path);
+        for typ in types.into_iter() {
+            if typ.entry.type_() == mime.type_() ||
+               typ.entry.type_() == "*"
+            {
+                if typ.entry.subtype() == "*" ||
+                   typ.entry.subtype() == mime.subtype()
+                {
+                    if let Some(rati) = typ.rating {
+                        if rati == 0 {
+                            return Some(Self::not_acceptable());
+                        }
+                    }
+                }
+            }
+
+        }
+
+        let langs: Vec<RatedEntry<String>> =
+            RatedEntry::new_list(req.headers.get(ACCEPT_LANGUAGE).unwrap_or(""))
+            .ok()?;
+
+        let ext = path.extension()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or("".into());
+
+        let file_lang: String = map_lang(&ext)
+            .unwrap_or(DEFAULT_LANGUAGE.clone());
+
+        for lang in langs.into_iter() {
+            if lang.entry.to_lowercase() == file_lang {
+                if let Some(rati) = lang.rating {
+                    if rati == 0 {
+                        return Some(Self::not_acceptable());
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     pub fn path_response(path: &Path, req: &Request) -> Self {
@@ -848,9 +906,9 @@ fn map_encoding(path: &Path) -> Option<String> {
         .into();
 
     match ext.as_str() {
-        "Z" | "gz" => Some(headers::encoding::GZIP.into()),
-        "zip"      => Some(headers::encoding::COMPRESS.into()),
-        _          => None
+        "gz"        => Some(headers::encoding::GZIP.into()),
+        "zip" | "Z" => Some(headers::encoding::COMPRESS.into()),
+        _           => None
     }
 }
 
