@@ -1,12 +1,82 @@
 <html>
-    <head></head>
+    <head>
+        <link href="https://fonts.googleapis.com/css?family=Roboto+Mono&display=swap" rel="stylesheet">
+        <style>
+            p, a, h1 {
+                font-family: 'Roboto Mono', monospace;
+                padding: 2px;
+                margin:  4px 5px;
+            }
+
+            h1 {
+                padding: 2px 2px 20px 2px;
+            }
+
+            body {
+                display: flex;
+                justify-content: center;
+                flex-direction: column;
+
+                width: 100%;
+                overflow-x: hidden;
+                overflow-y: auto;
+            }
+
+            #holder {
+                display: flex;
+                flex-direction: column;
+                width: 50%;
+                align-self: center;
+
+                padding: 10px;
+
+                background-color: whitesmoke;
+            }
+
+            .grow {
+                width: 33%;
+            }
+
+            .link {
+                text-align: left;
+            }
+
+            .date {
+                text-align: center;
+            }
+
+            .size {
+                text-align: right;
+            }
+
+            .item {
+                display: flex;
+                flex-wrap: nowrap;
+                flex-direction: row;
+                justify-content: space-between;
+            }
+
+            #holder .item:nth-child(even) {
+                background-color: gainsboro;
+            }
+        </style>
+    </head>
     <body>
-        <h1>{{ dir_path }}</h1>
-        {% for file in files %}
-        <div>
-            <a href={{file.path}}>{{file.name}}</a>
-            <p> - {{file.date}} - {{ file.size / 1000}}kb</p>
+        <div id="holder">
+            <h1>{{ dir_path }}</h1>
+            {% for file in files %}
+            <div class="item">
+                <div class="grow">
+                    <a class="link" href="{{file.path}}">{{file.name}}</a>
+                </div>
+                <div class="grow">
+                    <p class="date">{{file.date | date(format="%c")}}</p>
+                </div>
+                <div class="grow">
+                    <p class="size">{{file.size | filesizeformat}}</p>
+                </div>
+            </div>
+            {% endfor %}
         </div>
-        {% endfor %}
     </body>
 </html>

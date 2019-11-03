@@ -1,8 +1,42 @@
 <html>
     <head>
+        <style>
+            p, a, h1 {
+                font-family: 'Roboto Mono', monospace;
+                padding: 2px;
+                margin:  4px 5px;
+            }
+
+            h1 {
+                padding: 2px 2px 20px 2px;
+            }
+
+            body {
+                display: flex;
+                justify-content: center;
+                flex-direction: column;
+
+                height: 100%;
+                width: 100%;
+                overflow: hidden;
+            }
+
+            #holder {
+                display: flex;
+                flex-direction: column;
+                width: 50%;
+                align-self: center;
+
+                padding: 10px;
+
+                background-color: whitesmoke;
+            }
+        </style>
     </head>
     <body>
-        <h1>{{ code_phrase }} - {{ code_num }}</h1>
-        <p>{{ description}}</p>
+        <div id="holder">
+            <h1>{{ code_phrase }} - {{ code_num }}</h1>
+            <p>{{ description}}</p>
+        </div>
     </body>
 </html>

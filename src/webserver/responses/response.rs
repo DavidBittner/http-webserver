@@ -1,4 +1,7 @@
 mod templates;
+mod content_negotiator;
+
+use content_negotiator::*;
 use templates::*;
 
 use crate::webserver::socket_handler::etag::*;
@@ -48,28 +51,6 @@ pub static SERVER_NAME: &'static str = "Ruserv";
 pub static SERVER_VERS: &'static str = env!("CARGO_PKG_VERSION");
 
 pub static CHUNK_SIZE: usize = 2048;
-
-enum NegotiationError {
-    IoError(std::io::Error),
-    MultipleResponses(Vec<(u32, PathBuf)>),
-    NoMatches,
-    NotAcceptable,
-    //NoneError
-}
-
-impl From<std::io::Error> for NegotiationError {
-    fn from(err: std::io::Error) -> Self {
-        NegotiationError::IoError(err)
-    }
-}
-
-/*
-impl From<std::option::NoneError> for NegotiationError {
-    fn from(_: std::option::NoneError) -> Self {
-        NegotiationError::NoneError
-    }
-}
-*/
 
 pub enum ResponseData {
     Buffer(Vec<u8>),
@@ -422,101 +403,6 @@ impl Response {
         }
     }
 
-    fn best_choice(path: &Path, req: &Request) -> Result<Vec<PathBuf>, NegotiationError> {
-        let mut paths = Vec::new();
-        let stub: String = path.file_name().unwrap()
-            .to_string_lossy()
-            .into();
-
-        let root = path.parent().unwrap();
-
-        let types: RankedEntryList<Mime> = RankedEntryList::new_list(
-            req.headers.get(ACCEPT).unwrap_or("")
-        ).unwrap();
-
-        let langs: RankedEntryList<String> = RankedEntryList::new_list(
-            req.headers.get(ACCEPT_LANGUAGE).unwrap_or("")
-        ).unwrap();
-
-        let encodings: RankedEntryList<String> = RankedEntryList::new_list(
-            req.headers.get(ACCEPT_ENCODING).unwrap_or("")
-        ).unwrap();
-
-        let charset: RankedEntryList<String> = RankedEntryList::new_list(
-            req.headers.get(ACCEPT_CHARSET).unwrap_or("")
-        ).unwrap();
-
-        if types.has_zeroes()     ||
-           encodings.has_zeroes() ||
-           langs.has_zeroes()     ||
-           charset.has_zeroes()
-        {
-            return Err(NegotiationError::NotAcceptable);
-        }
-
-        for file in std::fs::read_dir(root)? {
-            if let Ok(file) = file {
-                let file_path = file.path();
-                if let Some(file_name) = file_path.file_stem() {
-                    let file_name: String = file_name.to_string_lossy()
-                        .into();
-                    if file_name.as_str().starts_with(&stub) {
-                        paths.push((0, file_path));
-                    }
-                }
-            }
-        }
-
-        let paths = types.filter(paths, |path, entry| {
-            let desc = map_file(path).typ;
-            if entry.type_() == desc.type_() ||
-               entry.type_() == "*"
-            {
-                entry.subtype() == "*" ||
-                entry.subtype() == desc.subtype()
-            }else{
-                false
-            }
-        });
-
-        let paths = langs.filter(paths, |path, entry| {
-            *entry == map_file(path).lang
-        });
-
-        let paths = charset.filter(paths, |path, entry| {
-            let desc = map_file(path).charset;
-            if let Some(charset) = desc {
-                charset == *entry  
-            }else{
-                false
-            }
-        });
-
-        let mut paths = encodings.filter(paths, |path, entry| {
-            *entry == map_file(path).enc
-                .unwrap_or("".into())
-        });
-
-        paths.sort_by(|(score_a, _), (score_b, _)| score_a.cmp(score_b));
-        if paths.len() >= 2 {
-            let (a, _) = paths[paths.len()-1];
-            let (b, _) = paths[paths.len()-2];
-
-            if a != b {
-                let temp = paths.pop().unwrap();
-                let mut paths = Vec::new();
-                paths.push(temp.1);
-
-                Ok(paths)
-            }else{
-                return Err(NegotiationError::MultipleResponses(paths));
-            }
-        }else if paths.len() == 1 {
-            Ok(paths.into_iter().map(|(_, path)| path).collect())
-        }else{
-            Err(NegotiationError::NoMatches)
-        }
-    }
 
     pub fn path_response(path: &Path, req: &Request) -> Self {
         for redir in REDIRECTS.iter() {
@@ -617,8 +503,11 @@ impl Response {
             if path.exists() {
                 Self::file_response(path)
             }else{
-                use NegotiationError::*;
-                let list = Self::best_choice(path, req);
+                use content_negotiator::NegotiationError::*;
+
+                let list = ContentNegotiator::new(path, &req.headers)
+                    .best_choice();
+
                 match list {
                     Ok(mut list) => {
                         Self::file_response(&list.pop().unwrap())
@@ -706,21 +595,24 @@ impl Response {
             if temp.is_absolute() {
                 headers.location(format!("/{}/", new_path.display()));
             }else{
-                headers.location(format!("{}/", new_path.display()));
+                headers.location(format!("/{}/", new_path.display()));
             }
         }else{
             if temp.is_absolute() {
-                headers.location(format!("/{}", new_path.display()));
-            }else{
                 headers.location(format!("{}", new_path.display()));
+            }else{
+                headers.location(format!("/{}", new_path.display()));
             }
         }
 
-        Self {
-            code: code,
-            headers: headers,
-            data: None
-        }
+        Self::error(
+            code,
+            &format!(
+                "This page has moved to: <a href=\"{0}\">{0}</a>",
+                path.display()
+            ),
+            headers
+        )
     }
 
     fn write_w_timeout<'a, T>(writer: &'a mut T, dat: &[u8]) -> ioResult<()>

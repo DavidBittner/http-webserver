@@ -110,8 +110,9 @@ impl SocketHandler {
             let req = self.read_request();
 
             //If the response failed to be parsed, send a bad request
-            let resp: Response = match &req {
+            let mut resp: Response = match &req {
                 Ok(req) => {
+                    debug!("\n---->\n{:#?}", req);
                     if req.ver != "HTTP/1.1" {
                         Response::unsupported_version()
                     }else{
@@ -184,6 +185,7 @@ impl SocketHandler {
                         .into()
             };
 
+            resp.headers.connection(&conn);
             self.write_response(resp)?;
             trace!("response written to '{}'", self.addr);
 
@@ -255,6 +257,7 @@ impl SocketHandler {
     }
 
     fn write_response(&mut self, resp: Response) -> Result<()> {
+        debug!("\n<----\n{:#?}", resp);
         match resp.headers.is_chunked() {
             true => {
                 resp.write_chunked(&mut self.stream)?;

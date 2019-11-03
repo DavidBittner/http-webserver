@@ -4,6 +4,7 @@ use num_traits::ToPrimitive;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
+use chrono::serde::ts_seconds;
 
 #[derive(Serialize, Deserialize)]
 pub struct ErrorTemplate {
@@ -26,6 +27,7 @@ impl ErrorTemplate {
 pub struct FileInfo {
     path: PathBuf,
     name: String,
+    #[serde(with = "ts_seconds")]
     date: DateTime<Utc>,
     size: u64
 }
