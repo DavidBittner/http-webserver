@@ -1,4 +1,5 @@
 pub mod etag;
+mod     auth_handler;
 
 use super::requests::*;
 use super::responses::*;
