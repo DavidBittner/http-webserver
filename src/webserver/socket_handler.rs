@@ -23,33 +23,6 @@ use super::clf::*;
 type Result<T> = std::result::Result<T, SocketError>;
 
 lazy_static::lazy_static! {
-    pub static ref ROOT: PathBuf = {
-        lazy_static::initialize(&CONFIG);
-
-        let root = CONFIG.get_str("root")
-            .expect("root not defined (shouldn't happen)");
-
-        PathBuf::from(root)
-    };
-
-    pub static ref READ_TIMEOUT: Duration = {
-        lazy_static::initialize(&CONFIG);
-
-        let ms: u64 = CONFIG.get("read_timeout")
-            .expect("read_timeout not defined, shouldn't happen.");
-
-        Duration::from_millis(ms)
-    };
-
-    pub static ref WRITE_TIMEOUT: Duration = {
-        lazy_static::initialize(&CONFIG);
-
-        let ms: u64 = CONFIG.get("write_timeout")
-            .expect("write_timeout not defined, shouldn't happen.");
-
-        Duration::from_millis(ms)
-    };
-
     static ref LOG_LIST: RwLock<Vec<LogEntry>> = {
         Default::default()
     };
@@ -207,7 +180,7 @@ impl SocketHandler {
         let mut in_buff = vec![0; 2048]; 
         while !self.req_buff.contains("\r\n\r\n") {
             //Check for timeouts
-            if Instant::now() - start >= *READ_TIMEOUT {
+            if Instant::now() - start >= CONFIG.read_timeout {
                 use std::io::{Error, ErrorKind};
                 return Err(Error::from(ErrorKind::TimedOut).into());
             }
@@ -284,10 +257,10 @@ impl SocketHandler {
 
         if has_slash {
             PathBuf::from(
-                format!("{}/", ROOT.join(rel_path).display())
+                format!("{}/", CONFIG.root.join(rel_path).display())
             )
         }else{
-            ROOT
+            CONFIG.root
                 .join(rel_path)
         }
     }
@@ -295,7 +268,7 @@ impl SocketHandler {
     fn get(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
 
-        if url.starts_with(&*ROOT) {
+        if url.starts_with(&CONFIG.root) {
             let not_mod = SocketHandler::check_if_match(req, &url)
                 .or(SocketHandler::check_modified_since(req, &url))
                 .or(SocketHandler::check_unmodified_since(req, &url))
@@ -304,7 +277,7 @@ impl SocketHandler {
             if not_mod.is_some() {
                 not_mod.unwrap()
             }else{
-                let comp = ROOT.join(PathBuf::from(".well-known/access.log"));
+                let comp = CONFIG.root.join(PathBuf::from(".well-known/access.log"));
                 if url.clone() == comp {
                     SocketHandler::log_response()
                 }else{
@@ -436,7 +409,7 @@ impl SocketHandler {
     fn options(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
 
-        if url.starts_with(&*ROOT) {
+        if url.starts_with(&CONFIG.root) {
             Response::options_response(&url)
         }else{
             Response::forbidden()

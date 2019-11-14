@@ -14,8 +14,8 @@ indexes:
     - index.html
 
 auth:
-    private-key:        this-is-a-key
-    file-name:          auth.yml
+    private_key: this-is-a-key
+    file_name:   auth.yml
 
 redirects:
     - regex: '^(.*)/coolcar.html$'
