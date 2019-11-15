@@ -209,7 +209,7 @@ enum SuppliedAuth {
         nc:       usize,
         cnonce:   String,
         response: String,
-        opaque:   String
+        opaque:   Option<String>
     }
 }
 
@@ -280,7 +280,8 @@ impl FromStr for SuppliedAuth {
                         .expect("failed to parse nc in supplied auth"),
                     cnonce:   get_or_error(&mut holder, "cnonce")?,
                     response: get_or_error(&mut holder, "response")?,
-                    opaque: get_or_error(&mut holder, "opaque")?,
+                    opaque:   get_or_error(&mut holder, "opaque")
+                        .ok()
                 })
             },
             _ => Err(SuppliedAuthError::UnknownAuthType{
