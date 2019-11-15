@@ -37,17 +37,25 @@ impl FromStr for User {
             .map(|s| s.trim())
             .collect();
 
-        if pieces.len() != 2 {
-            Err(UserParseError{
-                had: s.into()
-            })
-        }else{
+        if pieces.len() == 2 {
             let name = pieces[0];
             let pass = pieces[1];
 
             Ok(Self {
                 name: name.into(),
                 pass: pass.into()
+            })
+        }else if pieces.len() == 3 {
+            let name = pieces[0];
+            let pass = pieces[2];
+
+            Ok(Self {
+                name: name.into(),
+                pass: pass.into()
+            })
+        }else{
+            Err(UserParseError{
+                had: s.into()
             })
         }
     }

@@ -15,7 +15,7 @@ indexes:
 
 auth:
     private_key: this-is-a-key
-    file_name:   auth.yml
+    file_name:   "WeMustProtectThisHouse!"
 
 redirects:
     - regex: '^(.*)/coolcar.html$'
