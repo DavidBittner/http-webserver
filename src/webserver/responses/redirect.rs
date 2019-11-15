@@ -10,25 +10,13 @@ lazy_static::lazy_static! {
     pub static ref REDIRECTS: Vec<Redirect> = {
         lazy_static::initialize(&CONFIG);
 
-        let content: Vec<config::Value> = CONFIG
-            .get_array("redirects")
-            .expect("couldn't find redirects in config structure");
-
-        let content: Vec<TempRedirect> = content
-            .into_iter()
-            .map(|conf| {
-                conf.try_into()
-                    .expect("failed to deserialize redirect")
-            })
-            .collect();
-
-        content
-            .into_iter()
+        CONFIG.redirects
+            .iter()
             .map(|conf| {
                 Redirect {
                     code: StatusCode::from_u32(conf.code)
                         .unwrap_or(StatusCode::Unknown),
-                    subst_str: conf.url,
+                    subst_str: conf.url.clone(),
                     regex: Regex::new(&conf.regex)
                         .expect("failed to compile regex")
                 }

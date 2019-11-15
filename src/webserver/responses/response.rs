@@ -5,7 +5,6 @@ use content_negotiator::*;
 use templates::*;
 
 use crate::webserver::socket_handler::etag::*;
-use crate::webserver::socket_handler::ROOT;
 use crate::webserver::requests::Request;
 use super::status_code::StatusCode;
 use crate::webserver::shared::*;
@@ -28,18 +27,9 @@ lazy_static::lazy_static!{
 
         lazy_static::initialize(&CONFIG);
 
-        compile_templates!(&CONFIG.get_str("templates").unwrap())
-    };
-
-    static ref INDEXES: Vec<PathBuf> = {
-        CONFIG.get_array("indexes")
-            .unwrap()
-            .into_iter()
-            .map(|val| val
-                .try_into()
-                .expect("failed to get indexes")
-            )
-            .collect()
+        compile_templates!(&CONFIG.templates
+            .display()
+            .to_string())
     };
 
     static ref DEFAULT_LANGUAGE: String = {
@@ -153,6 +143,14 @@ impl Response {
         )
     }
 
+    pub fn range_not_satisfiable() -> Self {
+        Response::error(
+            StatusCode::RangeNotSatisfiable,
+            "The given range was outside of the bounds of the requested entity.",
+            HeaderList::response_headers()
+        )
+    }
+
     pub fn bad_request() -> Self {
         Response::error(
             StatusCode::BadRequest,
@@ -193,13 +191,13 @@ impl Response {
     pub fn not_modified(loc: &Path) -> Self {
         let mut headers = HeaderList::response_headers();
 
-        let new_path = loc.strip_prefix(&*ROOT)
+        let new_path = loc.strip_prefix(&CONFIG.root)
             .unwrap_or(loc);
 
-        let temp = if loc.starts_with(&*ROOT) {
+        let temp = if loc.starts_with(&CONFIG.root) {
             loc.into()
         }else{
-            ROOT.join(
+            CONFIG.root.join(
                 loc
                     .strip_prefix("/")
                     .unwrap_or(loc)
@@ -216,6 +214,14 @@ impl Response {
             code: StatusCode::NotModified,
             headers: headers,
             data: None,
+        }
+    }
+
+    pub fn unauthorized(headers: HeaderList) -> Self {
+        Self {
+            code: StatusCode::Unauthorized,
+            data: None,
+            headers
         }
     }
 
@@ -354,8 +360,15 @@ impl Response {
         if !path.exists() {
             Ok(Self::not_found())
         }else{
+            let len = path.metadata()?.len();
             let mut file = File::open(path)?;
+
             for range in ranges.ranges.iter() {
+                if range.start > len as i64     ||
+                   range.end.unwrap_or(0) > len as i64 {
+                    return Ok(Self::range_not_satisfiable());
+                }
+
                 if range.end.is_none() {
                     if range.start < 0 {
                         file.seek(SeekFrom::End(range.start))?;
@@ -388,7 +401,6 @@ impl Response {
                 ret_buff.len()
             );
 
-            let len = path.metadata()?.len();
             headers.content_range(&ranges, Some(len as usize));
 
             headers.content_language(
@@ -396,9 +408,9 @@ impl Response {
             );
 
             Ok(Self{
-                data: Some(ret_buff.into()),
+                data:    Some(ret_buff.into()),
                 headers: headers,
-                code: StatusCode::PartialContent
+                code:    StatusCode::PartialContent
             })
         }
     }
@@ -407,11 +419,7 @@ impl Response {
     pub fn path_response(path: &Path, req: &Request) -> Self {
         for redir in REDIRECTS.iter() {
             let temp = path
-                .strip_prefix(
-                    CONFIG
-                        .get_str("root")
-                        .unwrap()
-                )
+                .strip_prefix(&CONFIG.root)
                 .unwrap();
 
             let temp = PathBuf::from(format!("/{}", temp.display()));
@@ -439,7 +447,7 @@ impl Response {
                 .ends_with("/");
 
             if ends_with {
-                for file in INDEXES.iter() {
+                for file in CONFIG.indexes.iter() {
                     let temp = path.join(file);
                     if temp.exists() {
                         //Remove an excess slashes, make the
@@ -557,7 +565,7 @@ impl Response {
 
                         Self {
                             code: StatusCode::Ok,
-                            headers: headers,
+                            headers,
                             data: Some(data.into())
                         }
                     },
@@ -578,13 +586,13 @@ impl Response {
 
     fn redirect(path: &Path, code: StatusCode) -> Self {
         let mut headers = HeaderList::response_headers();
-        let new_path = path.strip_prefix(&*ROOT)
+        let new_path = path.strip_prefix(&CONFIG.root)
             .unwrap_or(path);
 
-        let temp = if path.starts_with(&*ROOT) {
+        let temp = if path.starts_with(&CONFIG.root) {
             path.into()
         }else{
-            ROOT.join(
+            CONFIG.root.join(
                 path
                     .strip_prefix("/")
                     .unwrap_or(path)
@@ -619,7 +627,6 @@ impl Response {
     where
         T: std::io::Write + Sized
     {
-        use super::super::socket_handler::WRITE_TIMEOUT;
         use std::io::ErrorKind;
         use std::time::Instant;
 
@@ -627,7 +634,7 @@ impl Response {
 
         let mut at = 0;
         while at < dat.len() {
-            if (Instant::now() - start) >= *WRITE_TIMEOUT {
+            if (Instant::now() - start) >= CONFIG.write_timeout {
                 return Err(std::io::Error::new(
                     ErrorKind::TimedOut,
                     "writing the response timed out"

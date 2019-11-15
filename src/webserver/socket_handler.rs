@@ -1,11 +1,13 @@
 pub mod etag;
+mod     auth_handler;
 
+use self::auth_handler::*;
 use super::requests::*;
 use super::responses::*;
 use super::shared::headers::*;
 use super::shared::*;
 
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use std::net::{TcpStream, SocketAddr};
 use std::io::Read;
 
@@ -22,33 +24,6 @@ use super::clf::*;
 type Result<T> = std::result::Result<T, SocketError>;
 
 lazy_static::lazy_static! {
-    pub static ref ROOT: PathBuf = {
-        lazy_static::initialize(&CONFIG);
-
-        let root = CONFIG.get_str("root")
-            .expect("root not defined (shouldn't happen)");
-
-        PathBuf::from(root)
-    };
-
-    pub static ref READ_TIMEOUT: Duration = {
-        lazy_static::initialize(&CONFIG);
-
-        let ms: u64 = CONFIG.get("read_timeout")
-            .expect("read_timeout not defined, shouldn't happen.");
-
-        Duration::from_millis(ms)
-    };
-
-    pub static ref WRITE_TIMEOUT: Duration = {
-        lazy_static::initialize(&CONFIG);
-
-        let ms: u64 = CONFIG.get("write_timeout")
-            .expect("write_timeout not defined, shouldn't happen.");
-
-        Duration::from_millis(ms)
-    };
-
     static ref LOG_LIST: RwLock<Vec<LogEntry>> = {
         Default::default()
     };
@@ -109,6 +84,7 @@ impl SocketHandler {
         loop {
             let req = self.read_request();
 
+            let mut passed_auth = None;
             //If the response failed to be parsed, send a bad request
             let mut resp: Response = match &req {
                 Ok(req) => {
@@ -116,25 +92,56 @@ impl SocketHandler {
                     if req.ver != "HTTP/1.1" {
                         Response::unsupported_version()
                     }else{
-                        match req.method {
-                            Method::Get => {
-                                self.get(&req)
-                            },
-                            Method::Head => {
-                                let mut resp = self.get(&req);
-                                resp.data = None;
-                                resp
-                            },
-                            Method::Options => {
-                                self.options(&req)
-                            },
-                            Method::Trace => {
-                                self.trace(&req)
-                            },
-                            _ =>{
-                                Response::not_implemented()
-                            }
+                        let url = SocketHandler::sterilize_path(&req.path);
 
+                        let auth_handler = AuthHandler::new(&url);
+                        if let Ok(auth_handler) = auth_handler {
+                            let res = auth_handler.check(req);
+                            match res {
+                                Ok(passed) => {
+                                    passed_auth = Some(passed);
+                                    if !passed {
+                                        warn!(
+                                            "connection '{}' failed authentication",
+                                            self.addr
+                                        );
+                                        auth_handler.create_unauthorized(req)
+                                    }else{
+                                        match req.method {
+                                            Method::Get => {
+                                                self.get(&req)
+                                            },
+                                            Method::Head => {
+                                                let mut resp = self.get(&req);
+                                                resp.data = None;
+                                                resp
+                                            },
+                                            Method::Options => {
+                                                self.options(&req)
+                                            },
+                                            Method::Trace => {
+                                                self.trace(&req)
+                                            },
+                                            _ =>{
+                                                Response::not_implemented()
+                                            }
+                                        }
+                                    }
+                                },
+                                Err(err) => {
+                                    warn!(
+                                        "failed parsing auth header: '{:?}'",
+                                        err
+                                    );
+                                    Response::bad_request()
+                                }
+                            }
+                        }else{
+                            warn!(
+                                "failed to create auth_handler: '{:?}'",
+                                auth_handler.unwrap_err()
+                            );
+                            Response::internal_error()
                         }
                     }
 
@@ -173,6 +180,17 @@ impl SocketHandler {
                     let mut list = LOG_LIST.write().unwrap();
                     list.push(entry);
 
+                    if let Some(passed) = passed_auth {
+                        if passed {
+                            let url = SocketHandler::sterilize_path(&req.path);
+                            AuthHandler::create_passed(
+                                &url,
+                                req,
+                                &mut resp.headers
+                            );
+                        }
+                    }
+
                     conn = req.headers
                         .get(headers::CONNECTION)
                         .unwrap_or(connection::LONG_LIVED)
@@ -203,10 +221,10 @@ impl SocketHandler {
         use std::time::Instant;
         let mut start = Instant::now();
 
-        let mut in_buff = vec![0; 2048]; 
+        let mut in_buff = vec![0; 2048];
         while !self.req_buff.contains("\r\n\r\n") {
             //Check for timeouts
-            if Instant::now() - start >= *READ_TIMEOUT {
+            if Instant::now() - start >= CONFIG.read_timeout {
                 use std::io::{Error, ErrorKind};
                 return Err(Error::from(ErrorKind::TimedOut).into());
             }
@@ -283,10 +301,10 @@ impl SocketHandler {
 
         if has_slash {
             PathBuf::from(
-                format!("{}/", ROOT.join(rel_path).display())
+                format!("{}/", CONFIG.root.join(rel_path).display())
             )
         }else{
-            ROOT
+            CONFIG.root
                 .join(rel_path)
         }
     }
@@ -294,7 +312,7 @@ impl SocketHandler {
     fn get(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
 
-        if url.starts_with(&*ROOT) {
+        if url.starts_with(&CONFIG.root) {
             let not_mod = SocketHandler::check_if_match(req, &url)
                 .or(SocketHandler::check_modified_since(req, &url))
                 .or(SocketHandler::check_unmodified_since(req, &url))
@@ -303,7 +321,7 @@ impl SocketHandler {
             if not_mod.is_some() {
                 not_mod.unwrap()
             }else{
-                let comp = ROOT.join(PathBuf::from(".well-known/access.log"));
+                let comp = CONFIG.root.join(PathBuf::from(".well-known/access.log"));
                 if url.clone() == comp {
                     SocketHandler::log_response()
                 }else{
@@ -427,7 +445,7 @@ impl SocketHandler {
 
         Response {
             code: StatusCode::Ok,
-            headers: headers,
+            headers,
             data: Some(buff.into()),
         }
     }
@@ -435,7 +453,7 @@ impl SocketHandler {
     fn options(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
 
-        if url.starts_with(&*ROOT) {
+        if url.starts_with(&CONFIG.root) {
             Response::options_response(&url)
         }else{
             Response::forbidden()

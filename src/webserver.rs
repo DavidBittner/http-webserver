@@ -26,8 +26,8 @@ impl WebServer {
         info!("creating new webserver...");
         let addr = format!(
             "{}:{}",
-            CONFIG.get_str("addr").unwrap(),
-            CONFIG.get_int("port").unwrap()
+            CONFIG.addr,
+            CONFIG.port
         );
 
         let listener = TcpListener::bind(&addr)?;
@@ -35,7 +35,7 @@ impl WebServer {
 
         listener.set_nonblocking(true)?;
         Ok(WebServer{
-            listener: listener,
+            listener,
         })
     }
 

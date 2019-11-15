@@ -13,6 +13,10 @@ root:
 indexes:
     - index.html
 
+auth:
+    private_key: this-is-a-key
+    file_name:   "WeMustProtectThisHouse!"
+
 redirects:
     - regex: '^(.*)/coolcar.html$'
       url:   '$1/galaxie.html'
