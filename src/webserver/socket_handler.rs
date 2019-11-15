@@ -1,6 +1,7 @@
 pub mod etag;
 mod     auth_handler;
 
+use self::auth_handler::*;
 use super::requests::*;
 use super::responses::*;
 use super::shared::headers::*;
@@ -267,6 +268,36 @@ impl SocketHandler {
 
     fn get(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
+        let auth_handler = AuthHandler::new(&url);
+        let auth_handler = match auth_handler {
+            Ok(auth_handler) => auth_handler,
+            Err(err)         => {
+                warn!(
+                    "could not create auth_handler: '{}'",
+                    err
+                );
+                return Response::internal_error();
+            }
+        };
+
+        match auth_handler.check(req) {
+            Ok(passed) => {
+                if !passed {
+                    warn!(
+                        "failed authentication at '{}'",
+                        req.path.display()
+                    );
+                    return auth_handler.create_unauthorized(req);
+                }
+            },
+            Err(err) => {
+                warn!(
+                    "error parsing auth header: '{:?}'",
+                    err
+                );
+                return Response::bad_request();
+            }
+        }
 
         if url.starts_with(&CONFIG.root) {
             let not_mod = SocketHandler::check_if_match(req, &url)

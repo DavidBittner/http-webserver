@@ -115,7 +115,7 @@ impl FromStr for Request {
             method: method.parse()?,
             path: url.into(),
             ver:  ver.into(),
-            headers: headers
+            headers
         })
     }
 }

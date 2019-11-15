@@ -209,6 +209,14 @@ impl Response {
         }
     }
 
+    pub fn unauthorized(headers: HeaderList) -> Self {
+        Self {
+            code: StatusCode::Unauthorized,
+            data: None,
+            headers
+        }
+    }
+
     pub fn precondition_failed() -> Self {
         Response::error(
             StatusCode::PreconditionFailed,

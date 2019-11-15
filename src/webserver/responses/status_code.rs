@@ -9,6 +9,7 @@ pub enum StatusCode {
     Found               = 302,
     NotModified         = 304,
     BadRequest          = 400,
+    Unauthorized        = 401,
     Forbidden           = 403,
     NotFound            = 404,
     NotAcceptable       = 406,
@@ -42,6 +43,7 @@ impl Display for StatusCode {
             MultipleChoice      => "Multiple Choice",
             NotAcceptable       => "Not Acceptable",
             RangeNotSatisfiable => "Range Not Satisfiable",
+            Unauthorized        => "Authorization Required",
             Unknown             => panic!("shouldn't be here")
         };
 

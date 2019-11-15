@@ -66,7 +66,9 @@ define_const!{
     REFERER             = "referer",
     TRANSFER_ENCODING   = "transfer-encoding",
     ALTERNATES          = "alternates",
-    TCN                 = "TCN"
+    TCN                 = "tcn",
+    AUTHORIZATION       = "authorization",
+    WWW_AUTHENTICATE    = "www-authenticate"
 }
 
 /// The list of constants corresponding to the acceptable values of
@@ -359,6 +361,10 @@ impl HeaderList {
         }
     }
 
+    pub fn authorization(&self) -> Option<&String> {
+        self.0.get(AUTHORIZATION)
+    }
+
     /// Sets the location header
     pub fn location(&mut self, path: String) {
         self.0.insert(
@@ -420,6 +426,13 @@ impl HeaderList {
         self.0.insert(
             LAST_MODIFIED.into(),
             Self::format_date(time)
+        );
+    }
+
+    pub fn resp_authenticate(&mut self, val: String) {
+        self.0.insert(
+            WWW_AUTHENTICATE.into(),
+            val
         );
     }
 

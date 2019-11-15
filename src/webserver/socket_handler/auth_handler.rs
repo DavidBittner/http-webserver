@@ -3,8 +3,16 @@ use std::sync::RwLock;
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::io;
+use std::fmt::{
+    Display,
+    Formatter,
+    Result as FmtResult
+};
 
 use crate::CONFIG;
+use crate::webserver::requests::*;
+use crate::webserver::responses::*;
+use crate::webserver::shared::*;
 
 lazy_static::lazy_static! {
     static ref AUTH_FILE_CACHE: RwLock<HashMap<Box<Path>, Arc<AuthFile>>> =
@@ -49,6 +57,17 @@ impl FromStr for User {
 enum AuthType {
     Basic,
     Digest
+}
+
+impl Display for AuthType {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        use AuthType::*;
+
+        match self {
+            Basic  => write!(fmt, "Basic"),
+            Digest => write!(fmt, "Digest")
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -160,8 +179,98 @@ impl FromStr for AuthFile {
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum SuppliedAuth {
+    Basic{
+        auth: String
+    },
+    Digest{
+        username: String,
+        realm:    String,
+        uri:      PathBuf,
+        qop:      String,
+        nonce:    String,
+        nc:       usize,
+        cnonce:   String,
+        response: String,
+        opaque:   String
+    }
+}
+
 #[derive(Debug)]
-pub struct SuppliedAuth {
+pub enum SuppliedAuthError {
+    InvalidItemFormat{item: String},
+    RequiredFieldNotPresent{field: String},
+    UnknownAuthType{supplied: String}
+}
+
+fn get_or_error(map: &mut HashMap<String, &str>, field: &str) -> Result<String, SuppliedAuthError> {
+    use SuppliedAuthError::*;
+    map.get(field)
+        .ok_or(RequiredFieldNotPresent{field: String::from(field)})
+        .map(|s| String::from(s.trim().replace("\"", "")))
+}
+
+impl FromStr for SuppliedAuth {
+    type Err = SuppliedAuthError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let first = s.split(",")
+            .nth(0)
+            .unwrap();
+
+        let auth_type: &str = first.split_whitespace()
+            .nth(0)
+            .unwrap()
+            .trim();
+
+        match auth_type.to_lowercase().as_str() {
+            "basic" => {
+                let cont = s.split_whitespace()
+                    .nth(1)
+                    .unwrap();
+                
+                Ok(Self::Basic {
+                    auth: cont.into()
+                })
+            },
+            "digest" => {
+                let mut holder = HashMap::new();
+                let section = s.splitn(2, " ")
+                    .skip(1)
+                    .nth(0)
+                    .unwrap();
+
+                for field in section.split(",") {
+                    let mut ab_iter = field.split("=");
+                    let a = ab_iter.nth(0)
+                        .expect("invalid field a")
+                        .trim();
+                    let b = ab_iter.nth(0)
+                        .expect("invalid field b")
+                        .trim();
+
+                    holder.insert(a.to_lowercase(), b);
+                }
+
+                Ok(Self::Digest{
+                    username: get_or_error(&mut holder, "username")?,
+                    realm:    get_or_error(&mut holder, "realm")?,
+                    uri:      PathBuf::from(
+                        get_or_error(&mut holder, "uri")?),
+                    qop:      get_or_error(&mut holder, "qop")?,
+                    nonce:    get_or_error(&mut holder, "nonce")?,
+                    nc:       get_or_error(&mut holder, "nc")?
+                        .parse()
+                        .expect("failed to parse nc in supplied auth"),
+                    cnonce:   get_or_error(&mut holder, "cnonce")?,
+                    response: get_or_error(&mut holder, "response")?,
+                    opaque: get_or_error(&mut holder, "opaque")?,
+                })
+            },
+            _ => Err(SuppliedAuthError::UnknownAuthType{
+                supplied: auth_type.into()})
+        }
+    }
 }
 
 impl AuthFile {
@@ -171,6 +280,15 @@ impl AuthFile {
             realm: "".into(),
             users: Vec::new()
         }
+    }
+
+    fn get_password(&self, name: &str) -> Option<String> {
+        for user in self.users.iter() {
+            if user.name == name {
+                return Some(String::from(user.pass.clone()));
+            }
+        }
+        None
     }
 }
 
@@ -209,16 +327,107 @@ impl AuthHandler {
         }
 
         Ok(Self {
-            auth_file: auth_file
+            auth_file
         })
     }
 
-    pub fn check(&self, auth: &SuppliedAuth) -> bool {
-        if self.auth_file.is_none() {
-            true
+    pub fn check(&self, req: &Request) -> Result<bool, SuppliedAuthError> {
+        if let Some(ref auth_file) = self.auth_file {
+            let auth_text = req.headers.authorization();
+            if auth_text.is_none() {
+                return Ok(false);
+            }
+
+            let auth: SuppliedAuth = req.headers
+                .authorization()
+                .unwrap()
+                .parse()?;
+
+            match auth {
+                SuppliedAuth::Basic{auth} => {
+                    Ok(true)
+                },
+                SuppliedAuth::Digest{
+                    username,
+                    realm,
+                    uri,
+                    qop,
+                    nonce,
+                    nc,
+                    cnonce,
+                    response,
+                    opaque: _opaque
+                } => {
+                    let password = auth_file.get_password(&username);
+                    if password.is_none() {
+                        return Ok(false)
+                    }
+                    let password = password.unwrap();
+                    let a1 =
+                        md5::compute(format!("{}:{}:{}",
+                                username, realm, password));
+
+                    let a2 = match qop.as_str() {
+                        "auth"     => 
+                            md5::compute(format!("{}:{}",
+                                    req.method, uri.display())),
+                        "auth-int" =>
+                            md5::compute(format!("{}:{}",
+                                    req.method, uri.display())),
+                        _          =>
+                            return Err(
+                                SuppliedAuthError::UnknownAuthType{
+                                    supplied: qop
+                                }
+                            )
+                    };
+
+                    use std::io::Write;
+                    let mut context = md5::Context::new();
+
+                    context.write(&*a1)
+                        .expect("cannot fail");
+                    context.write(format!(":{}:{}:{}:{}:",
+                            nonce, nc, cnonce, qop).as_bytes())
+                        .expect("cannot fail");
+                    context.write(&*a2)
+                        .expect("cannot fail");
+
+                    let digest = context.compute();
+                    Ok(format!("{:x}", digest) == response.to_lowercase())
+                }
+            }
         }else{
-            false
+            Ok(true)
         }
+    }
+
+    pub fn create_unauthorized(&self, req: &Request) -> Response {
+        let mut headers = HeaderList::response_headers();
+        match self.auth_file {
+            Some(ref file) => {
+                let nonce = md5::compute(
+                    format!("{}:{}",
+                        req.path.display(),
+                        CONFIG.auth.private_key
+                    ));
+
+                let auth_header = format!(
+                    "{} realm=\"{}\",
+                        nonce=\"{:X}\",
+                        algorithm=md5
+                        qop=\"auth\"",
+                    file.typ,
+                    file.realm,
+                    nonce
+                );
+
+                headers.resp_authenticate(auth_header);
+            },
+            None => ()
+        }
+
+        Response::unauthorized(headers)
     }
 
     fn find_config(loc: &Path) -> Option<AuthFile> {
@@ -294,6 +503,49 @@ jbollen:66e0459d0abbc8cd8bd9a88cd226a9b2"#
                 ]
             },
             auth_file
+        );
+    }
+
+    #[test]
+    fn test_parse_supplied_auth() {
+        let sup: SuppliedAuth =
+r#"Digest username="Mufasa",
+realm="http-auth@example.org",
+uri="/dir/index.html",
+algorithm=MD5,
+nonce="7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v",
+nc=00000001,
+cnonce="f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ",
+qop=auth,
+response="8ca523f5e9506fed4657c9700eebdbec",
+opaque="FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS"#
+            .parse()
+            .unwrap();
+
+        assert_eq!(
+            SuppliedAuth::Digest {
+                username: "Mufasa".into(),
+                realm:    "http-auth@example.org".into(),
+                uri:      PathBuf::from("/dir/index.html").into(),
+                nonce:    "7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v".into(),
+                nc:       1,
+                cnonce:   "f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ".into(),
+                qop:      "auth".into(),
+                response: "8ca523f5e9506fed4657c9700eebdbec".into(),
+                opaque:   "FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS".into()
+            },
+            sup
+        );
+
+        let sup: SuppliedAuth = "Basic dGVzdDoxMjPCow=="
+            .parse()
+            .unwrap();
+
+        assert_eq!(
+            SuppliedAuth::Basic {
+                auth: "dGVzdDoxMjPCow==".into()
+            },
+            sup
         );
     }
 }
