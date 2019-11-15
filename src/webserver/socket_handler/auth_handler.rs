@@ -466,7 +466,7 @@ impl AuthHandler {
                         let nonce = Self::generate_nonce();
 
                         format!(
-                            "{} realm=\"{}\", nonce=\"{:x}\", algorithm=md5, qop=\"auth\"",
+                            "{} realm=\"{}\", nonce=\"{}\", algorithm=md5, qop=\"auth\"",
                             file.typ,
                             file.realm,
                             nonce
