@@ -182,7 +182,12 @@ impl SocketHandler {
 
                     if let Some(passed) = passed_auth {
                         if passed {
-                            AuthHandler::create_passed(req, &mut resp.headers);
+                            let url = SocketHandler::sterilize_path(&req.path);
+                            AuthHandler::create_passed(
+                                &url,
+                                req,
+                                &mut resp.headers
+                            );
                         }
                     }
 

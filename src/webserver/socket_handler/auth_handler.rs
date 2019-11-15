@@ -485,22 +485,61 @@ impl AuthHandler {
         Response::unauthorized(headers)
     }
 
-    pub fn create_passed(req: &Request, headers: &mut HeaderList) {
-        let auth: SuppliedAuth = req.headers
-            .authorization()
-            .unwrap()
-            .parse()
-            .unwrap();
-
-        match auth {
-            SuppliedAuth::Basic{..} => (),
-            SuppliedAuth::Digest{
-                ..
-            } => {
-                headers.authentication_info(
-                    format!("nextnonce={}", Self::generate_nonce())
-                );
+    pub fn create_passed(loc: &Path, req: &Request, headers: &mut HeaderList) {
+        let auth_file = if let Ok(auth) = Self::find_config(loc) {
+            if let Some(auth) = auth {
+                auth
+            }else{
+                return;
             }
+        }else{
+            return;
+        };
+
+        if let Some(auth_str) = req.headers.authorization() {
+            let auth: SuppliedAuth = auth_str
+                .parse()
+                .unwrap();
+
+            match auth {
+                SuppliedAuth::Basic{..} => (),
+                SuppliedAuth::Digest{
+                    username,
+                    realm,
+                    uri,
+                    qop,
+                    nonce,
+                    nc,
+                    cnonce,
+                    response,
+                    opaque: _opaque
+                } => {
+                    let password = auth_file.get_password(&username)
+                        .unwrap();
+
+                    let a2 = md5::compute(
+                        format!(
+                            ":{}",
+                            uri
+                        )
+                    );
+
+                    let to_hash = format!(
+                        "{a1}:{nonce}:{ncount}:{cnonce}:auth:{a2}",
+                        a1     = password,
+                        nonce  = nonce,
+                        ncount = nc,
+                        cnonce = cnonce,
+                        a2     = format!("{:x}", a2)
+                    );
+
+                    headers.authentication_info(
+                        format!("{:x}", md5::compute(to_hash))
+                    );
+                }
+            }
+        }else{
+            return;
         }
     }
 

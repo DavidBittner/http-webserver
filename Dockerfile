@@ -26,7 +26,7 @@ COPY config.yml ${server_home}/
 
 RUN cd ${server_home}
 RUN cargo build --release
-RUN echo "#!/bin/sh \n RUST_BACKTRACE=1 SERV_LOG=trace SERV_ROOT="${server_root}" SERV_PORT="${listen_port}" ./target/release/http-webserver" > ${server_home}/start.sh
+RUN echo "#!/bin/sh \n RUST_BACKTRACE=full SERV_LOG=trace SERV_ROOT="${server_root}" SERV_PORT="${listen_port}" ./target/release/http-webserver" > ${server_home}/start.sh
 RUN chmod uo+x ${server_home}/start.sh
 
 ENTRYPOINT ["/home/http-server/start.sh"]
