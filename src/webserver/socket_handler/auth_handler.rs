@@ -1,4 +1,4 @@
-use std::path::{PathBuf, Path};
+use std::path::Path;
 use std::sync::RwLock;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -194,7 +194,7 @@ impl FromStr for AuthFile {
 }
 
 #[derive(Debug, PartialEq)]
-enum SuppliedAuth {
+pub enum SuppliedAuth {
     Basic{
         auth: String
     },
@@ -243,8 +243,8 @@ impl FromStr for SuppliedAuth {
                 let cont = s.split_whitespace()
                     .nth(1)
                     .unwrap();
-                
-                Ok(Self::Basic {
+
+                Ok(SuppliedAuth::Basic {
                     auth: cont.into()
                 })
             },
@@ -258,16 +258,16 @@ impl FromStr for SuppliedAuth {
                 for field in section.split(",") {
                     let mut ab_iter = field.split("=");
                     let a = ab_iter.nth(0)
-                        .expect("invalid field a")
+                        .ok_or(SuppliedAuthError::InvalidItemFormat(field.into()))?
                         .trim();
                     let b = ab_iter.nth(0)
-                        .expect("invalid field b")
+                        .ok_or(SuppliedAuthError::InvalidItemFormat(field.into()))?
                         .trim();
 
                     holder.insert(a.to_lowercase(), b);
                 }
 
-                Ok(Self::Digest{
+                Ok(SuppliedAuth::Digest{
                     username: get_or_error(&mut holder, "username")?,
                     realm:    get_or_error(&mut holder, "realm")?,
                     uri:      get_or_error(&mut holder, "uri")?,
@@ -361,11 +361,11 @@ impl AuthHandler {
             match auth {
                 SuppliedAuth::Basic{auth} => {
                     let decoded: Vec<u8> = base64::decode(&auth)
-                        .map_err(|_| 
+                        .map_err(|_|
                             SuppliedAuthError::InvalidBase64(auth.clone()))?;
 
                     let decoded = String::from_utf8(decoded)
-                        .map_err(|_| 
+                        .map_err(|_|
                             SuppliedAuthError::InvalidBase64(auth))?;
 
                     let username       = &decoded[0..decoded.find(":").unwrap_or(0)];
@@ -406,7 +406,7 @@ impl AuthHandler {
                     let password = password.unwrap();
 
                     let a2 = match qop.as_str() {
-                        "auth"     => 
+                        "auth"     =>
                             md5::compute(format!("{}:{}",
                                     req.method, uri)),
                         _          =>
@@ -441,7 +441,7 @@ impl AuthHandler {
     }
 
     fn generate_nonce() -> String {
-        format!("{:x}", 
+        format!("{:x}",
             md5::compute(
                 format!("{} {}",
                     chrono::Utc::now(),
@@ -485,7 +485,7 @@ impl AuthHandler {
         Response::unauthorized(headers)
     }
 
-    pub fn create_passed(&self, req: &Request, headers: &mut HeaderList) {
+    pub fn create_passed(req: &Request, headers: &mut HeaderList) {
         let auth: SuppliedAuth = req.headers
             .authorization()
             .unwrap()
@@ -493,18 +493,10 @@ impl AuthHandler {
             .unwrap();
 
         match auth {
-            SuppliedAuth::Basic{auth} => {
-
-            },
+            SuppliedAuth::Basic{..} => (),
             SuppliedAuth::Digest{
-                qop,
-                nc,
-                cnonce,
                 ..
             } => {
-                let nonce_count = usize::from_str_radix(&nc, 16)
-                    .unwrap();
-
                 headers.authentication_info(
                     format!("nextnonce={}", Self::generate_nonce())
                 );
@@ -561,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_parse_auth_file() {
-        let auth_file: AuthFile = 
+        let auth_file: AuthFile =
 r#"# Hashed lines are comments and order is not important
 #
 # Following are two special lines:

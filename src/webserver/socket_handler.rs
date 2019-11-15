@@ -7,7 +7,7 @@ use super::responses::*;
 use super::shared::headers::*;
 use super::shared::*;
 
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use std::net::{TcpStream, SocketAddr};
 use std::io::Read;
 
@@ -84,6 +84,7 @@ impl SocketHandler {
         loop {
             let req = self.read_request();
 
+            let mut passed_auth = None;
             //If the response failed to be parsed, send a bad request
             let mut resp: Response = match &req {
                 Ok(req) => {
@@ -91,25 +92,56 @@ impl SocketHandler {
                     if req.ver != "HTTP/1.1" {
                         Response::unsupported_version()
                     }else{
-                        match req.method {
-                            Method::Get => {
-                                self.get(&req)
-                            },
-                            Method::Head => {
-                                let mut resp = self.get(&req);
-                                resp.data = None;
-                                resp
-                            },
-                            Method::Options => {
-                                self.options(&req)
-                            },
-                            Method::Trace => {
-                                self.trace(&req)
-                            },
-                            _ =>{
-                                Response::not_implemented()
-                            }
+                        let url = SocketHandler::sterilize_path(&req.path);
 
+                        let auth_handler = AuthHandler::new(&url);
+                        if let Ok(auth_handler) = auth_handler {
+                            let res = auth_handler.check(req);
+                            match res {
+                                Ok(passed) => {
+                                    passed_auth = Some(passed);
+                                    if !passed {
+                                        warn!(
+                                            "connection '{}' failed authentication",
+                                            self.addr
+                                        );
+                                        auth_handler.create_unauthorized(req)
+                                    }else{
+                                        match req.method {
+                                            Method::Get => {
+                                                self.get(&req)
+                                            },
+                                            Method::Head => {
+                                                let mut resp = self.get(&req);
+                                                resp.data = None;
+                                                resp
+                                            },
+                                            Method::Options => {
+                                                self.options(&req)
+                                            },
+                                            Method::Trace => {
+                                                self.trace(&req)
+                                            },
+                                            _ =>{
+                                                Response::not_implemented()
+                                            }
+                                        }
+                                    }
+                                },
+                                Err(err) => {
+                                    warn!(
+                                        "failed parsing auth header: '{:?}'",
+                                        err
+                                    );
+                                    Response::bad_request()
+                                }
+                            }
+                        }else{
+                            warn!(
+                                "failed to create auth_handler: '{:?}'",
+                                auth_handler.unwrap_err()
+                            );
+                            Response::internal_error()
                         }
                     }
 
@@ -148,6 +180,12 @@ impl SocketHandler {
                     let mut list = LOG_LIST.write().unwrap();
                     list.push(entry);
 
+                    if let Some(passed) = passed_auth {
+                        if passed {
+                            AuthHandler::create_passed(req, &mut resp.headers);
+                        }
+                    }
+
                     conn = req.headers
                         .get(headers::CONNECTION)
                         .unwrap_or(connection::LONG_LIVED)
@@ -178,7 +216,7 @@ impl SocketHandler {
         use std::time::Instant;
         let mut start = Instant::now();
 
-        let mut in_buff = vec![0; 2048]; 
+        let mut in_buff = vec![0; 2048];
         while !self.req_buff.contains("\r\n\r\n") {
             //Check for timeouts
             if Instant::now() - start >= CONFIG.read_timeout {
@@ -268,36 +306,6 @@ impl SocketHandler {
 
     fn get(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
-        let auth_handler = AuthHandler::new(&url);
-        let auth_handler = match auth_handler {
-            Ok(auth_handler) => auth_handler,
-            Err(err)         => {
-                warn!(
-                    "could not create auth_handler: '{:?}'",
-                    err
-                );
-                return Response::internal_error();
-            }
-        };
-
-        match auth_handler.check(req) {
-            Ok(passed) => {
-                if !passed {
-                    warn!(
-                        "failed authentication at '{}'",
-                        req.path.display()
-                    );
-                    return auth_handler.create_unauthorized(req);
-                }
-            },
-            Err(err) => {
-                warn!(
-                    "error parsing auth header: '{:?}'",
-                    err
-                );
-                return Response::bad_request();
-            }
-        }
 
         if url.starts_with(&CONFIG.root) {
             let not_mod = SocketHandler::check_if_match(req, &url)
@@ -432,44 +440,13 @@ impl SocketHandler {
 
         Response {
             code: StatusCode::Ok,
-            headers: headers,
+            headers,
             data: Some(buff.into()),
         }
     }
 
     fn options(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
-
-        let auth_handler = AuthHandler::new(&url);
-        let auth_handler = match auth_handler {
-            Ok(auth_handler) => auth_handler,
-            Err(err)         => {
-                warn!(
-                    "could not create auth_handler: '{:?}'",
-                    err
-                );
-                return Response::internal_error();
-            }
-        };
-
-        match auth_handler.check(req) {
-            Ok(passed) => {
-                if !passed {
-                    warn!(
-                        "failed authentication at '{}'",
-                        req.path.display()
-                    );
-                    return auth_handler.create_unauthorized(req);
-                }
-            },
-            Err(err) => {
-                warn!(
-                    "error parsing auth header: '{:?}'",
-                    err
-                );
-                return Response::bad_request();
-            }
-        }
 
         if url.starts_with(&CONFIG.root) {
             Response::options_response(&url)
