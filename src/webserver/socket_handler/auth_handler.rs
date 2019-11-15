@@ -385,7 +385,7 @@ impl AuthHandler {
                 },
                 SuppliedAuth::Digest{
                     username,
-                    realm: _realm,
+                    realm,
                     uri,
                     qop,
                     nonce,
@@ -394,6 +394,10 @@ impl AuthHandler {
                     response,
                     opaque: _opaque
                 } => {
+                    if realm != auth_file.realm {
+                        return Ok(false);
+                    }
+
                     let password = auth_file.get_password(&username);
                     if password.is_none() {
                         return Ok(false)
@@ -436,6 +440,20 @@ impl AuthHandler {
         }
     }
 
+    fn generate_nonce() -> String {
+        format!("{:x}", 
+            md5::compute(
+                format!("{} {}",
+                    chrono::Utc::now(),
+                    format!("{}:{}",
+                        chrono::Utc::now(),
+                        CONFIG.auth.private_key
+                    )
+                )
+            )
+        )
+    }
+
     pub fn create_unauthorized(&self, req: &Request) -> Response {
         let mut headers = HeaderList::response_headers();
         match self.auth_file {
@@ -445,14 +463,7 @@ impl AuthHandler {
                         format!("Basic realm=\"{}\"",
                             file.realm),
                     AuthType::Digest => {
-                        let nonce = md5::compute(
-                            format!("{} {}",
-                                chrono::Utc::now(),
-                                format!("{}:{}",
-                                    chrono::Utc::now(),
-                                    CONFIG.auth.private_key
-                                )
-                            ));
+                        let nonce = Self::generate_nonce();
 
                         format!(
                             "{} realm=\"{}\", nonce=\"{:x}\", algorithm=md5, qop=\"auth\"",
@@ -472,6 +483,33 @@ impl AuthHandler {
         }
 
         Response::unauthorized(headers)
+    }
+
+    pub fn create_passed(&self, req: &Request, headers: &mut HeaderList) {
+        let auth: SuppliedAuth = req.headers
+            .authorization()
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        match auth {
+            SuppliedAuth::Basic{auth} => {
+
+            },
+            SuppliedAuth::Digest{
+                qop,
+                nc,
+                cnonce,
+                ..
+            } => {
+                let nonce_count = usize::from_str_radix(&nc, 16)
+                    .unwrap();
+
+                headers.authentication_info(
+                    format!("nextnonce={}", Self::generate_nonce())
+                );
+            }
+        }
     }
 
     fn find_config(loc: &Path) -> Result<Option<AuthFile>, AuthFileParseError> {

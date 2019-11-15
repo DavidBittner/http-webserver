@@ -143,6 +143,14 @@ impl Response {
         )
     }
 
+    pub fn range_not_satisfiable() -> Self {
+        Response::error(
+            StatusCode::RangeNotSatisfiable,
+            "The given range was outside of the bounds of the requested entity.",
+            HeaderList::response_headers()
+        )
+    }
+
     pub fn bad_request() -> Self {
         Response::error(
             StatusCode::BadRequest,
@@ -352,8 +360,15 @@ impl Response {
         if !path.exists() {
             Ok(Self::not_found())
         }else{
+            let len = path.metadata()?.len();
             let mut file = File::open(path)?;
+
             for range in ranges.ranges.iter() {
+                if range.start > len as i64     ||
+                   range.end.unwrap_or(0) > len as i64 {
+                    return Ok(Self::range_not_satisfiable());
+                }
+
                 if range.end.is_none() {
                     if range.start < 0 {
                         file.seek(SeekFrom::End(range.start))?;
@@ -386,7 +401,6 @@ impl Response {
                 ret_buff.len()
             );
 
-            let len = path.metadata()?.len();
             headers.content_range(&ranges, Some(len as usize));
 
             headers.content_language(

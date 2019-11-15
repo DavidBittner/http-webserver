@@ -68,6 +68,7 @@ define_const!{
     ALTERNATES          = "alternates",
     TCN                 = "tcn",
     AUTHORIZATION       = "authorization",
+    AUTHENTICATION_INFO = "authentication-info",
     WWW_AUTHENTICATE    = "www-authenticate"
 }
 
@@ -426,6 +427,13 @@ impl HeaderList {
         self.0.insert(
             LAST_MODIFIED.into(),
             Self::format_date(time)
+        );
+    }
+
+    pub fn authentication_info(&mut self, val: String) {
+        self.0.insert(
+            AUTHENTICATION_INFO.into(),
+            val
         );
     }
 
