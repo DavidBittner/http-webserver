@@ -370,7 +370,12 @@ impl AuthHandler {
 
                     let username       = &decoded[0..decoded.find(":").unwrap_or(0)];
                     let given_password = &decoded[decoded.find(":").unwrap_or(0)+1..];
-                    let password = auth_file.get_password(username);
+                    let password       = auth_file.get_password(username);
+
+                    let given_password = format!(
+                        "{:x}",
+                        md5::compute(given_password.as_bytes())
+                    );
 
                     if let Some(password) = password {
                         Ok(given_password == password)
@@ -380,7 +385,7 @@ impl AuthHandler {
                 },
                 SuppliedAuth::Digest{
                     username,
-                    realm,
+                    realm: _realm,
                     uri,
                     qop,
                     nonce,
@@ -395,9 +400,6 @@ impl AuthHandler {
                     }
 
                     let password = password.unwrap();
-                    let a1 =
-                        md5::compute(format!("{}:{}:{}",
-                                username, realm, password));
 
                     let a2 = match qop.as_str() {
                         "auth"     => 
@@ -411,7 +413,7 @@ impl AuthHandler {
 
                     let to_hash = format!(
                         "{a1}:{nonce}:{ncount}:{cnonce}:auth:{a2}",
-                        a1     = format!("{:x}", a1),
+                        a1     = password,
                         nonce  = nonce,
                         ncount = nc,
                         cnonce = cnonce,

@@ -440,6 +440,37 @@ impl SocketHandler {
     fn options(&mut self, req: &Request) -> Response {
         let url = SocketHandler::sterilize_path(&req.path);
 
+        let auth_handler = AuthHandler::new(&url);
+        let auth_handler = match auth_handler {
+            Ok(auth_handler) => auth_handler,
+            Err(err)         => {
+                warn!(
+                    "could not create auth_handler: '{:?}'",
+                    err
+                );
+                return Response::internal_error();
+            }
+        };
+
+        match auth_handler.check(req) {
+            Ok(passed) => {
+                if !passed {
+                    warn!(
+                        "failed authentication at '{}'",
+                        req.path.display()
+                    );
+                    return auth_handler.create_unauthorized(req);
+                }
+            },
+            Err(err) => {
+                warn!(
+                    "error parsing auth header: '{:?}'",
+                    err
+                );
+                return Response::bad_request();
+            }
+        }
+
         if url.starts_with(&CONFIG.root) {
             Response::options_response(&url)
         }else{
