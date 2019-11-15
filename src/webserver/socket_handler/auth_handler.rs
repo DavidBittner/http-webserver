@@ -101,12 +101,19 @@ struct AuthFile {
     users: Vec<User>
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum AuthFileParseError {
     InvalidFormat{msg: String},
     UnknownAuthType(AuthTypeParseError),
     UserParseError(UserParseError),
-    MalformedEntry{entry: String, had: String}
+    MalformedEntry{entry: String, had: String},
+    IoError(std::io::Error)
+}
+
+impl From<std::io::Error> for AuthFileParseError {
+    fn from(oth: std::io::Error) -> Self {
+        AuthFileParseError::IoError(oth)
+    }
 }
 
 impl From<AuthTypeParseError> for AuthFileParseError {
@@ -153,6 +160,7 @@ impl FromStr for AuthFile {
                         had:   String::from(*line)
                     });
                 }else{
+                    log::debug!("{}={}", pieces[0], pieces[1]);
                     match pieces[0].to_lowercase().as_str() {
                         "authorization-type" => auth_type = Some(pieces[1].parse()?),
                         "realm"              => realm     = Some(pieces[1]),
@@ -282,12 +290,14 @@ impl FromStr for SuppliedAuth {
 }
 
 impl AuthFile {
-    fn new() -> Self {
-        Self {
-            typ: AuthType::Basic,
-            realm: "".into(),
-            users: Vec::new()
-        }
+    fn new(path: &Path) -> Result<Self, AuthFileParseError> {
+        use std::io::Read;
+
+        let mut buff = String::new();
+        let mut file = std::fs::File::open(path)?;
+
+        file.read_to_string(&mut buff)?;
+        Ok(buff.parse()?)
     }
 
     fn get_password(&self, name: &str) -> Option<String> {
@@ -305,7 +315,7 @@ pub struct AuthHandler {
 }
 
 impl AuthHandler {
-    pub fn new(loc: &Path) -> io::Result<Self> {
+    pub fn new(loc: &Path) -> Result<Self, AuthFileParseError> {
         let temp_path = if loc.is_dir() {
             loc
         }else{
@@ -321,7 +331,7 @@ impl AuthHandler {
             if let Some(cached) = cache.get(temp_path) {
                 Some(Arc::clone(cached))
             }else{
-                Self::find_config(temp_path)
+                Self::find_config(temp_path)?
                     .map(|inner| Arc::new(inner))
             }
         };
@@ -421,10 +431,7 @@ impl AuthHandler {
                     ));
 
                 let auth_header = format!(
-                    "{} realm=\"{}\",
-                        nonce=\"{:X}\",
-                        algorithm=md5
-                        qop=\"auth\"",
+                    "{} realm=\"{}\", nonce=\"{:X}\", algorithm=md5, qop=\"auth\"",
                     file.typ,
                     file.realm,
                     nonce
@@ -432,26 +439,29 @@ impl AuthHandler {
 
                 headers.resp_authenticate(auth_header);
             },
-            None => ()
+            None => panic!(
+                        "requested to create unauthorized, yet no auth file exists here: '{}'",
+                        req.path.display()
+                    )
         }
 
         Response::unauthorized(headers)
     }
 
-    fn find_config(loc: &Path) -> Option<AuthFile> {
+    fn find_config(loc: &Path) -> Result<Option<AuthFile>, AuthFileParseError> {
         let file = loc.join(&CONFIG.auth.file_name);
         if file.exists() {
-            Some(AuthFile::new())
+            Ok(Some(AuthFile::new(&file)?))
         }else{
             let new_loc = loc.parent();
             if let Some(new_loc) = new_loc {
                 if new_loc == CONFIG.root {
-                    None
+                    Ok(None)
                 }else{
-                    Self::find_config(new_loc)
+                    Ok(Self::find_config(new_loc)?)
                 }
             }else{
-                None
+                Ok(None)
             }
         }
     }
@@ -508,6 +518,35 @@ jbollen:66e0459d0abbc8cd8bd9a88cd226a9b2"#
                     User{name: "mln".into(), pass: "d3b07384d113edec49eaa6238ad5ff00".into()},
                     User{name: "bda".into(), pass: "c157a79031e1c40f85931829bc5fc552".into()},
                     User{name: "jbollen".into(), pass: "66e0459d0abbc8cd8bd9a88cd226a9b2".into()}
+                ]
+            },
+            auth_file
+        );
+
+        let auth_file: AuthFile =
+r#"#
+# A4 password file
+#
+authorization-type=Digest
+#
+realm="Colonial Place"
+#
+bda:Colonial Place:b8e13248f7bb96682093c850d5c7da46
+jbollen:Colonial Place:c5d7f97a6ac34b393ba2d252c7331d5a
+mln:Colonial Place:53bbb5135e0f39c1eb54804a66a95f08
+vaona:Colonial Place:fbcc0f347e4ade65a337a4febc421c81"#
+            .parse()
+            .unwrap();
+
+        assert_eq!(
+            AuthFile {
+                typ: AuthType::Digest,
+                realm: "Colonial Place".into(),
+                users: vec![
+                    User{name: "bda".into(),     pass: "b8e13248f7bb96682093c850d5c7da46".into()},
+                    User{name: "jbollen".into(), pass: "c5d7f97a6ac34b393ba2d252c7331d5a".into()},
+                    User{name: "mln".into(),     pass: "53bbb5135e0f39c1eb54804a66a95f08".into()},
+                    User{name: "vaona".into(),   pass: "fbcc0f347e4ade65a337a4febc421c81".into()},
                 ]
             },
             auth_file

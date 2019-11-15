@@ -273,7 +273,7 @@ impl SocketHandler {
             Ok(auth_handler) => auth_handler,
             Err(err)         => {
                 warn!(
-                    "could not create auth_handler: '{}'",
+                    "could not create auth_handler: '{:?}'",
                     err
                 );
                 return Response::internal_error();
