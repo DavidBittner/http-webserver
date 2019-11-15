@@ -425,18 +425,25 @@ impl AuthHandler {
         let mut headers = HeaderList::response_headers();
         match self.auth_file {
             Some(ref file) => {
-                let nonce = md5::compute(
-                    format!("{}:{}",
-                        req.path.display(),
-                        CONFIG.auth.private_key
-                    ));
+                let auth_header = match file.typ {
+                    AuthType::Basic =>
+                        format!("Basic realm=\"{}\"",
+                            file.realm),
+                    AuthType::Digest => {
+                        let nonce = md5::compute(
+                            format!("{}:{}",
+                                req.path.display(),
+                                CONFIG.auth.private_key
+                            ));
 
-                let auth_header = format!(
-                    "{} realm=\"{}\", nonce=\"{:X}\", algorithm=md5, qop=\"auth\"",
-                    file.typ,
-                    file.realm,
-                    nonce
-                );
+                        format!(
+                            "{} realm=\"{}\", nonce=\"{:X}\", algorithm=md5, qop=\"auth\"",
+                            file.typ,
+                            file.realm,
+                            nonce
+                        )
+                    }
+                };
 
                 headers.resp_authenticate(auth_header);
             },
