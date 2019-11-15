@@ -2,7 +2,6 @@ use std::path::{PathBuf, Path};
 use std::sync::RwLock;
 use std::sync::Arc;
 use std::collections::HashMap;
-use std::io;
 use std::fmt::{
     Display,
     Formatter,
@@ -160,7 +159,6 @@ impl FromStr for AuthFile {
                         had:   String::from(*line)
                     });
                 }else{
-                    log::debug!("{}={}", pieces[0], pieces[1]);
                     match pieces[0].to_lowercase().as_str() {
                         "authorization-type" => auth_type = Some(pieces[1].parse()?),
                         "realm"              => realm     = Some(pieces[1]),
@@ -203,11 +201,11 @@ enum SuppliedAuth {
     Digest{
         username: String,
         realm:    String,
-        uri:      PathBuf,
+        uri:      String,
         qop:      String,
         nonce:    String,
-        nc:       usize,
         cnonce:   String,
+        nc:       String,
         response: String,
         opaque:   Option<String>
     }
@@ -215,15 +213,16 @@ enum SuppliedAuth {
 
 #[derive(Debug)]
 pub enum SuppliedAuthError {
-    InvalidItemFormat{item: String},
-    RequiredFieldNotPresent{field: String},
-    UnknownAuthType{supplied: String}
+    InvalidItemFormat(String),
+    RequiredFieldNotPresent(String),
+    UnknownAuthType(String),
+    InvalidBase64(String)
 }
 
 fn get_or_error(map: &mut HashMap<String, &str>, field: &str) -> Result<String, SuppliedAuthError> {
     use SuppliedAuthError::*;
     map.get(field)
-        .ok_or(RequiredFieldNotPresent{field: String::from(field)})
+        .ok_or(RequiredFieldNotPresent(String::from(field)))
         .map(|s| String::from(s.trim().replace("\"", "")))
 }
 
@@ -271,21 +270,17 @@ impl FromStr for SuppliedAuth {
                 Ok(Self::Digest{
                     username: get_or_error(&mut holder, "username")?,
                     realm:    get_or_error(&mut holder, "realm")?,
-                    uri:      PathBuf::from(
-                        get_or_error(&mut holder, "uri")?),
+                    uri:      get_or_error(&mut holder, "uri")?,
                     qop:      get_or_error(&mut holder, "qop")?,
                     nonce:    get_or_error(&mut holder, "nonce")?,
-                    nc:       get_or_error(&mut holder, "nc")?
-                        .parse()
-                        .expect("failed to parse nc in supplied auth"),
+                    nc:       get_or_error(&mut holder, "nc")?,
                     cnonce:   get_or_error(&mut holder, "cnonce")?,
                     response: get_or_error(&mut holder, "response")?,
                     opaque:   get_or_error(&mut holder, "opaque")
                         .ok()
                 })
             },
-            _ => Err(SuppliedAuthError::UnknownAuthType{
-                supplied: auth_type.into()})
+            _ => Err(SuppliedAuthError::UnknownAuthType(auth_type.into()))
         }
     }
 }
@@ -364,7 +359,23 @@ impl AuthHandler {
 
             match auth {
                 SuppliedAuth::Basic{auth} => {
-                    Ok(true)
+                    let decoded: Vec<u8> = base64::decode(&auth)
+                        .map_err(|_| 
+                            SuppliedAuthError::InvalidBase64(auth.clone()))?;
+
+                    let decoded = String::from_utf8(decoded)
+                        .map_err(|_| 
+                            SuppliedAuthError::InvalidBase64(auth))?;
+
+                    let username       = &decoded[0..decoded.find(":").unwrap_or(0)];
+                    let given_password = &decoded[decoded.find(":").unwrap_or(0)+1..];
+                    let password = auth_file.get_password(username);
+
+                    if let Some(password) = password {
+                        Ok(given_password == password)
+                    }else{
+                        Ok(false)
+                    }
                 },
                 SuppliedAuth::Digest{
                     username,
@@ -381,6 +392,7 @@ impl AuthHandler {
                     if password.is_none() {
                         return Ok(false)
                     }
+
                     let password = password.unwrap();
                     let a1 =
                         md5::compute(format!("{}:{}:{}",
@@ -389,31 +401,31 @@ impl AuthHandler {
                     let a2 = match qop.as_str() {
                         "auth"     => 
                             md5::compute(format!("{}:{}",
-                                    req.method, uri.display())),
-                        "auth-int" =>
-                            md5::compute(format!("{}:{}",
-                                    req.method, uri.display())),
+                                    req.method, uri)),
                         _          =>
                             return Err(
-                                SuppliedAuthError::UnknownAuthType{
-                                    supplied: qop
-                                }
+                                SuppliedAuthError::UnknownAuthType(qop)
                             )
                     };
 
-                    use std::io::Write;
-                    let mut context = md5::Context::new();
+                    let to_hash = format!(
+                        "{a1}:{nonce}:{ncount}:{cnonce}:auth:{a2}",
+                        a1     = format!("{:x}", a1),
+                        nonce  = nonce,
+                        ncount = nc,
+                        cnonce = cnonce,
+                        a2     = format!("{:x}", a2)
+                    );
 
-                    context.write(&*a1)
-                        .expect("cannot fail");
-                    context.write(format!(":{}:{}:{}:{}:",
-                            nonce, nc, cnonce, qop).as_bytes())
-                        .expect("cannot fail");
-                    context.write(&*a2)
-                        .expect("cannot fail");
+                    let digest = md5::compute(to_hash.as_bytes());
 
-                    let digest = context.compute();
-                    Ok(format!("{:x}", digest) == response.to_lowercase())
+                    log::debug!("{:x} == {} = {}",
+                        digest,
+                        response.to_lowercase(),
+                        format!("{:x}", digest) == response
+                    );
+
+                    Ok(format!("{:x}", digest) == response)
                 }
             }
         }else{
@@ -431,13 +443,16 @@ impl AuthHandler {
                             file.realm),
                     AuthType::Digest => {
                         let nonce = md5::compute(
-                            format!("{}:{}",
-                                req.path.display(),
-                                CONFIG.auth.private_key
+                            format!("{} {}",
+                                chrono::Utc::now(),
+                                format!("{}:{}",
+                                    chrono::Utc::now(),
+                                    CONFIG.auth.private_key
+                                )
                             ));
 
                         format!(
-                            "{} realm=\"{}\", nonce=\"{:X}\", algorithm=md5, qop=\"auth\"",
+                            "{} realm=\"{}\", nonce=\"{:x}\", algorithm=md5, qop=\"auth\"",
                             file.typ,
                             file.realm,
                             nonce
@@ -581,13 +596,13 @@ opaque="FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS"#
             SuppliedAuth::Digest {
                 username: "Mufasa".into(),
                 realm:    "http-auth@example.org".into(),
-                uri:      PathBuf::from("/dir/index.html").into(),
+                uri:      "/dir/index.html".into(),
                 nonce:    "7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v".into(),
-                nc:       1,
+                nc:       "00000001".into(),
                 cnonce:   "f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ".into(),
                 qop:      "auth".into(),
                 response: "8ca523f5e9506fed4657c9700eebdbec".into(),
-                opaque:   "FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS".into()
+                opaque:   Some("FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS".into())
             },
             sup
         );
