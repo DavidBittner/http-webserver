@@ -306,6 +306,7 @@ impl AuthFile {
     }
 }
 
+#[derive(Debug)]
 pub struct AuthHandler {
     auth_file: Option<Arc<AuthFile>>
 }
@@ -474,6 +475,7 @@ impl AuthHandler {
     fn find_config(loc: &Path) -> Result<Option<AuthFile>, AuthFileParseError> {
         let file = loc.join(&CONFIG.auth.file_name);
         if file.exists() {
+            log::trace!("found auth file: '{}'", file.display());
             Ok(Some(AuthFile::new(&file)?))
         }else{
             let new_loc = loc.parent();
