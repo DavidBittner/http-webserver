@@ -1,16 +1,16 @@
 use crate::webserver::responses::StatusCode;
 
-use num_traits::ToPrimitive;
-use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
-use std::path::{Path, PathBuf};
 use chrono::serde::ts_seconds;
+use chrono::{DateTime, Utc};
+use num_traits::ToPrimitive;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Deserialize)]
 pub struct ErrorTemplate {
     code_phrase: String,
     code_num:    u32,
-    description: String
+    description: String,
 }
 
 impl ErrorTemplate {
@@ -18,7 +18,7 @@ impl ErrorTemplate {
         Self {
             code_phrase: format!("{}", code),
             code_num:    code.to_u32().unwrap(),
-            description: desc.into()
+            description: desc.into(),
         }
     }
 }
@@ -29,13 +29,13 @@ pub struct FileInfo {
     name: String,
     #[serde(with = "ts_seconds")]
     date: DateTime<Utc>,
-    size: u64
+    size: u64,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DirectoryListing {
-    dir_path: PathBuf,   
-    files: Vec<FileInfo>
+    dir_path: PathBuf,
+    files:    Vec<FileInfo>,
 }
 
 impl DirectoryListing {
@@ -48,28 +48,20 @@ impl DirectoryListing {
             let meta = file.metadata()?;
 
             files.push(FileInfo {
-                path: file.path()
+                path: file
+                    .path()
                     .strip_prefix(path)
                     .unwrap_or(&PathBuf::default())
                     .into(),
-                name: file
-                    .file_name()
-                    .to_string_lossy()
-                    .into(),
-                date: meta
-                    .modified()
-                    .unwrap_or(SystemTime::now())
-                    .into(),
-                size: meta.len()
+                name: file.file_name().to_string_lossy().into(),
+                date: meta.modified().unwrap_or(SystemTime::now()).into(),
+                size: meta.len(),
             });
         }
 
         Ok(Self {
-            dir_path: path
-                .file_name()
-                .unwrap_or(Default::default())
-                .into(),
-            files: files
+            dir_path: path.file_name().unwrap_or(Default::default()).into(),
+            files:    files,
         })
     }
 }

@@ -1,9 +1,9 @@
-use std::net::SocketAddr;
-use chrono::{DateTime, Utc};
-use super::responses::*;
 use super::requests::*;
+use super::responses::*;
 use super::shared::headers::*;
+use chrono::{DateTime, Utc};
 use num_traits::ToPrimitive;
+use std::net::SocketAddr;
 
 pub struct LogEntry {
     client_addr:  SocketAddr,
@@ -12,19 +12,16 @@ pub struct LogEntry {
     time:         DateTime<Utc>,
     req_line:     String,
     status_code:  StatusCode,
-    sent_size:    usize
+    sent_size:    usize,
 }
 
 impl LogEntry {
     pub fn new(addr: &SocketAddr, req: &Request, resp: &Response) -> Self {
-        let req_line = format!(
-            "{} {} {}",
-            req.method,
-            req.path.display(),
-            req.ver
-        );
+        let req_line =
+            format!("{} {} {}", req.method, req.path.display(), req.ver);
 
-        let cont_len = resp.headers
+        let cont_len = resp
+            .headers
             .get(CONTENT_LENGTH)
             .clone()
             .unwrap_or(&String::from("0"))
@@ -38,7 +35,7 @@ impl LogEntry {
             time:         Utc::now(),
             req_line:     req_line,
             status_code:  resp.code,
-            sent_size:    cont_len
+            sent_size:    cont_len,
         }
     }
 }
@@ -46,14 +43,10 @@ impl LogEntry {
 use std::fmt::{Display, Formatter, Result as fmtResult};
 impl Display for LogEntry {
     fn fmt(&self, fmt: &mut Formatter) -> fmtResult {
-        let ident = self.client_ident.clone()
-            .unwrap_or("-".into());
-        let usrid = self.userid.clone()
-            .unwrap_or("-".into());
+        let ident = self.client_ident.clone().unwrap_or("-".into());
+        let usrid = self.userid.clone().unwrap_or("-".into());
 
-        let date_form = self.time.format(
-            "%d/%h/%Y:%T %z"
-        );
+        let date_form = self.time.format("%d/%h/%Y:%T %z");
 
         write!(
             fmt,

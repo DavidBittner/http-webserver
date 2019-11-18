@@ -1,11 +1,12 @@
 use std::net::IpAddr;
-use std::time::Duration;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde::{Deserialize, Deserializer};
 
-fn deserialize_duration<'de, D> (des: D) -> Result<Duration, D::Error>
-    where D: Deserializer<'de>
+fn deserialize_duration<'de, D>(des: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
 {
     let val = u64::deserialize(des)?;
     Ok(Duration::from_millis(val))
@@ -14,16 +15,16 @@ fn deserialize_duration<'de, D> (des: D) -> Result<Duration, D::Error>
 #[derive(Deserialize, Debug)]
 pub struct Auth {
     #[serde(default)]
-    pub file_name:   String,
+    pub file_name: String,
     #[serde(default)]
-    pub private_key: String
+    pub private_key: String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Redirect {
     pub regex: String,
     pub url:   String,
-    pub code:  u32
+    pub code:  u32,
 }
 
 #[derive(Deserialize, Debug)]

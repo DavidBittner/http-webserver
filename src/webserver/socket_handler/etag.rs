@@ -1,14 +1,14 @@
-use std::path::{Path};
-use std::io::Result as ioResult;
-use std::hash::Hasher;
-use std::hash::Hash;
-use std::fs::File;
-use std::io::Read;
 use std::collections::hash_map::DefaultHasher;
+use std::fs::File;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::io::Read;
+use std::io::Result as ioResult;
+use std::path::Path;
 
 pub fn file_etag(path: &Path) -> ioResult<String> {
     let full_path = path.canonicalize()?;
-    let meta      = std::fs::metadata(path)?; 
+    let meta = std::fs::metadata(path)?;
 
     let mut hasher = DefaultHasher::default();
     full_path.hash(&mut hasher);
@@ -22,7 +22,7 @@ pub fn file_etag(path: &Path) -> ioResult<String> {
         let siz = file.read(&mut buffer)?;
         if siz == 0 {
             break;
-        }else{
+        } else {
             hasher.write(&buffer[0..siz]);
         }
     }
@@ -32,7 +32,7 @@ pub fn file_etag(path: &Path) -> ioResult<String> {
 
 pub fn dir_etag(path: &Path) -> ioResult<String> {
     let full_path = path.canonicalize()?;
-    let meta      = std::fs::metadata(path)?; 
+    let meta = std::fs::metadata(path)?;
 
     let mut hasher = DefaultHasher::default();
     full_path.hash(&mut hasher);

@@ -1,15 +1,11 @@
-use std::str::FromStr;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::path::{Path, PathBuf};
-use std::fmt::{
-    Display,
-    Formatter,
-    Result as FmtResult
-};
+use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct RankedEntry<T: FromStr> {
-    pub entry: T,
-    pub rating: Option<u32>
+    pub entry:  T,
+    pub rating: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -32,9 +28,7 @@ impl<T: FromStr> RankedEntryList<T> {
         }
 
         let mut ret = Vec::new();
-        let pieces: Vec<_> = s.split(",")
-            .map(|s| s.trim())
-            .collect();
+        let pieces: Vec<_> = s.split(",").map(|s| s.trim()).collect();
 
         for piece in pieces.into_iter() {
             ret.push(piece.parse()?);
@@ -43,7 +37,11 @@ impl<T: FromStr> RankedEntryList<T> {
         Ok(Self(ret))
     }
 
-    pub fn filter<'a>(&self, paths: Vec<(u32, PathBuf)>, check: fn(&Path, &T) -> bool) -> Vec<(u32, PathBuf)> {
+    pub fn filter<'a>(
+        &self,
+        paths: Vec<(u32, PathBuf)>,
+        check: fn(&Path, &T) -> bool,
+    ) -> Vec<(u32, PathBuf)> {
         if self.0.len() == 0 {
             return paths;
         }
@@ -55,12 +53,12 @@ impl<T: FromStr> RankedEntryList<T> {
                 if let Some(rating) = item.rating {
                     if rating == 0 {
                         continue;
-                    }else{
+                    } else {
                         if check(&path, &item.entry) {
                             ret.push((score + rating, path.clone()));
                         }
                     }
-                }else{
+                } else {
                     if check(&path, &item.entry) {
                         ret.push((*score, path.clone()));
                     }
@@ -86,25 +84,20 @@ impl<T: FromStr> RankedEntryList<T> {
 impl<T: FromStr> FromStr for RankedEntry<T> {
     type Err = <T as FromStr>::Err;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let pieces: Vec<_> = s.split(";")
-            .map(|s| s.trim())
-            .collect();
+        let pieces: Vec<_> = s.split(";").map(|s| s.trim()).collect();
 
         if pieces.len() == 1 {
             Ok(Self {
-                entry: pieces[0].parse()?,
-                rating: None
+                entry:  pieces[0].parse()?,
+                rating: None,
             })
-        }else{
-            let val: f32 = pieces[1].split("=")
-                .nth(1)
-                .unwrap()
-                .parse()
-                .unwrap_or(0.);
+        } else {
+            let val: f32 =
+                pieces[1].split("=").nth(1).unwrap().parse().unwrap_or(0.);
 
             Ok(Self {
-                entry: pieces[0].parse()?,
-                rating: Some((val * 1000.) as u32)
+                entry:  pieces[0].parse()?,
+                rating: Some((val * 1000.) as u32),
             })
         }
     }

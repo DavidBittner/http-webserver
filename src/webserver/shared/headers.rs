@@ -1,3 +1,5 @@
+use super::method::*;
+use chrono::prelude::*;
 /// This module simply contains a wrapper for a HashMap that allows
 /// easier access/modification to header values. It does not allow you
 /// to get a direct mutable reference to an internal value.
@@ -11,10 +13,7 @@
 ///
 /// assert_eq!(headers.connection(), connection::CLOSE);
 /// ```
-
 use chrono::{DateTime, Utc};
-use super::method::*;
-use chrono::prelude::*;
 use mime::*;
 use std::collections::HashMap;
 
@@ -34,7 +33,7 @@ macro_rules! define_const {
     }
 }
 
-define_const!{
+define_const! {
     CONNECTION          = "connection",
     HOST                = "host",
     SERVER              = "server",
@@ -86,7 +85,7 @@ pub mod connection {
 pub mod encoding {
     define_const! {
         GZIP     = "gzip",
-        COMPRESS = "compress" 
+        COMPRESS = "compress"
     }
 }
 
@@ -95,24 +94,26 @@ pub mod encoding {
 #[derive(Debug, PartialEq, Default)]
 pub struct HeaderList(HashMap<String, String>);
 
-use std::str::FromStr;
 use std::error::Error;
+use std::str::FromStr;
 
 /// An error received when a supplied header is not known or is
 /// in a provably incorrect format.
 #[derive(Debug, PartialEq)]
 pub enum HeaderError {
     InvalidFormatError(String),
-    UnrecognizedParameterError{head: String, param: String}
+    UnrecognizedParameterError { head: String, param: String },
 }
 
 impl std::fmt::Display for HeaderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HeaderError::InvalidFormatError(head) =>
-                write!(f, "InvalidFormatError: '{}'", head),
-            HeaderError::UnrecognizedParameterError{head, param} =>
+            HeaderError::InvalidFormatError(head) => {
+                write!(f, "InvalidFormatError: '{}'", head)
+            }
+            HeaderError::UnrecognizedParameterError { head, param } => {
                 write!(f, "UnrecognizedParameterError: '{} >{}<'", head, param)
+            }
         }
     }
 }
@@ -128,117 +129,108 @@ impl FromStr for HeaderList {
         let mut ret: HashMap<String, String> = HashMap::new();
 
         for line in s.lines() {
-            let mut req: Vec<_> = line
-                .splitn(2, ": ")
-                .collect();
+            let mut req: Vec<_> = line.splitn(2, ": ").collect();
 
             if line.trim().is_empty() {
                 break;
-            }else if req.len() < 2 {
+            } else if req.len() < 2 {
                 return Err(InvalidFormatError(line.into()));
-            }else{
+            } else {
                 let verb = req.remove(0);
                 let desc = req.remove(0);
 
-                let res: Option<(&str, String)> = match verb.to_lowercase().as_str() {
-                    CONNECTION => {
-                        match desc.to_lowercase().as_str() {
-                            connection::LONG_LIVED |
-                            connection::PIPELINED  |
-                            connection::CLOSE      |
-                            connection::KEEP_ALIVE =>
-                                Some((CONNECTION, desc.to_lowercase())),
-                            _ =>
-                                return Err(UnrecognizedParameterError{
+                let res: Option<(&str, String)> =
+                    match verb.to_lowercase().as_str() {
+                        CONNECTION => match desc.to_lowercase().as_str() {
+                            connection::LONG_LIVED
+                            | connection::PIPELINED
+                            | connection::CLOSE
+                            | connection::KEEP_ALIVE => {
+                                Some((CONNECTION, desc.to_lowercase()))
+                            }
+                            _ => {
+                                return Err(UnrecognizedParameterError {
                                     head:  CONNECTION.into(),
-                                    param: desc.into()
+                                    param: desc.into(),
                                 })
-                        }
-                    },
-                    DATE => {
-                        let desc = desc.parse::<DateTime<Utc>>();
+                            }
+                        },
+                        DATE => {
+                            let desc = desc.parse::<DateTime<Utc>>();
 
-                        if let Ok(desc) = desc {
-                            Some((DATE, desc.to_string()))
-                        }else{
-                            None
+                            if let Ok(desc) = desc {
+                                Some((DATE, desc.to_string()))
+                            } else {
+                                None
+                            }
                         }
-                    },
-                    CONTENT_TYPE => {
-                        desc.parse::<Mime>()
-                            .map_err(|_| {
-                                InvalidFormatError(
-                                    format!(
-                                        "unknown mime type: '{}'",
-                                        desc
-                                    )
-                                )
+                        CONTENT_TYPE => {
+                            desc.parse::<Mime>().map_err(|_| {
+                                InvalidFormatError(format!(
+                                    "unknown mime type: '{}'",
+                                    desc
+                                ))
                             })?;
 
-                        Some((CONTENT_TYPE.into(), desc.into()))
-                    },
-                    CONTENT_LENGTH => {
-                        desc.parse::<usize>()
-                            .map_err(|_| {
-                                InvalidFormatError(
-                                    format!(
-                                        "invalid content length: '{}'",
-                                        desc
-                                    )
-                                )
+                            Some((CONTENT_TYPE.into(), desc.into()))
+                        }
+                        CONTENT_LENGTH => {
+                            desc.parse::<usize>().map_err(|_| {
+                                InvalidFormatError(format!(
+                                    "invalid content length: '{}'",
+                                    desc
+                                ))
                             })?;
 
-                        Some((CONTENT_LENGTH.into(), desc.into()))
-                    },
-                    LAST_MODIFIED => {
-                        let desc = Utc.datetime_from_str(
+                            Some((CONTENT_LENGTH.into(), desc.into()))
+                        }
+                        LAST_MODIFIED => {
+                            let desc = Utc.datetime_from_str(
                                 desc.into(),
-                                "%a, %d %b %Y %T GMT"
+                                "%a, %d %b %Y %T GMT",
                             );
 
-                        if let Ok(date) = desc {
-                            Some((
-                                LAST_MODIFIED.into(),
-                                Self::format_date(&date)
-                            ))
-                        }else{
-                            None
+                            if let Ok(date) = desc {
+                                Some((
+                                    LAST_MODIFIED.into(),
+                                    Self::format_date(&date),
+                                ))
+                            } else {
+                                None
+                            }
                         }
-                    },
-                    IF_MODIFIED_SINCE => {
-                        let desc = Utc.datetime_from_str(
+                        IF_MODIFIED_SINCE => {
+                            let desc = Utc.datetime_from_str(
                                 desc.into(),
-                                "%a, %d %b %Y %T GMT"
+                                "%a, %d %b %Y %T GMT",
                             );
 
-                        if let Ok(date) = desc {
-                            Some((
-                                IF_MODIFIED_SINCE.into(),
-                                Self::format_date(&date)
-                            ))
-                        }else{
-                            None
+                            if let Ok(date) = desc {
+                                Some((
+                                    IF_MODIFIED_SINCE.into(),
+                                    Self::format_date(&date),
+                                ))
+                            } else {
+                                None
+                            }
                         }
-                    },
-                    IF_UNMODIFIED_SINCE => {
-                        let desc = Utc.datetime_from_str(
+                        IF_UNMODIFIED_SINCE => {
+                            let desc = Utc.datetime_from_str(
                                 desc.into(),
-                                "%a, %d %b %Y %T GMT"
+                                "%a, %d %b %Y %T GMT",
                             );
 
-                        if let Ok(date) = desc {
-                            Some((
-                                IF_UNMODIFIED_SINCE.into(),
-                                Self::format_date(&date)
-                            ))
-                        }else{
-                            None
+                            if let Ok(date) = desc {
+                                Some((
+                                    IF_UNMODIFIED_SINCE.into(),
+                                    Self::format_date(&date),
+                                ))
+                            } else {
+                                None
+                            }
                         }
-                    }
-                    _ => {
-                        Some((verb.into(), desc.into()))
-                    }
-                };
+                        _ => Some((verb.into(), desc.into())),
+                    };
 
                 if let Some((key, val)) = res {
                     ret.insert(key.to_lowercase().into(), val.into());
@@ -254,10 +246,7 @@ impl HeaderList {
     /// Generates the basic headers to get ready for a response.
     /// Sets the server and date headers.
     pub fn response_headers() -> Self {
-        use crate::webserver::responses::{
-            SERVER_NAME,
-            SERVER_VERS
-        };
+        use crate::webserver::responses::{SERVER_NAME, SERVER_VERS};
 
         let mut ret: HashMap<String, String> = Default::default();
         ret.insert(DATE.into(), Self::format_date(&Utc::now()));
@@ -269,14 +258,9 @@ impl HeaderList {
     /// Used to retrieve a date stored under the given header name.
     pub fn get_date(&self, name: &str) -> Option<DateTime<Utc>> {
         let date = self.0.get(name)?;
-        let date = Utc
-            .datetime_from_str(
-                date,
-                "%a, %d %b %Y %T GMT"
-            );
+        let date = Utc.datetime_from_str(date, "%a, %d %b %Y %T GMT");
 
-        Some(date
-            .expect("date existed in hashmap, but wasnt a valid format"))
+        Some(date.expect("date existed in hashmap, but wasnt a valid format"))
     }
 
     /// A helper method for when specifying the content type
@@ -284,52 +268,34 @@ impl HeaderList {
     pub fn content(&mut self, typ: &str, enc: Option<String>, len: usize) {
         debug_assert!(typ.parse::<Mime>().is_ok());
 
-        self.0.insert(
-            CONTENT_LENGTH.into(),
-            len.to_string()
-        );
+        self.0.insert(CONTENT_LENGTH.into(), len.to_string());
 
         if let Some(enc) = enc {
             self.0.insert(
                 CONTENT_TYPE.into(),
                 format!("{}; charset={}", typ, enc),
             );
-        }else{
-            self.0.insert(
-                CONTENT_TYPE.into(),
-                typ.into()
-            );
+        } else {
+            self.0.insert(CONTENT_TYPE.into(), typ.into());
         }
     }
 
     pub fn content_language(&mut self, lang: &str) {
-        self.0.insert(
-            CONTENT_LANGUAGE.into(),
-            lang.into()
-        );
+        self.0.insert(CONTENT_LANGUAGE.into(), lang.into());
     }
 
     pub fn content_charset(&mut self, charset: String) {
-        self.0.insert(
-            CONTENT_ENCODING.into(),
-            charset.into()
-        );
+        self.0.insert(CONTENT_ENCODING.into(), charset.into());
     }
 
     /// Sets the etag header
     pub fn etag(&mut self, etag: &str) {
-        self.0.insert(
-            ETAG.into(),
-            etag.into()
-        );
+        self.0.insert(ETAG.into(), etag.into());
     }
 
     /// Sets the connection header
     pub fn connection(&mut self, conn: &str) {
-        self.0.insert(
-            CONNECTION.into(),
-            conn.into()
-        );
+        self.0.insert(CONNECTION.into(), conn.into());
     }
 
     /// Sets the accept header from a list of methods
@@ -340,16 +306,13 @@ impl HeaderList {
             buff.push_str(",");
         }
         //remove the extra comma
-        buff.remove(buff.len()-1);
+        buff.remove(buff.len() - 1);
 
         self.0.insert(ALLOW.into(), buff);
     }
 
     pub fn chunked_encoding(&mut self) {
-        self.0.insert(
-            TRANSFER_ENCODING.into(),
-            "chunked".into()
-        );
+        self.0.insert(TRANSFER_ENCODING.into(), "chunked".into());
 
         self.0.remove(CONTENT_LENGTH);
     }
@@ -357,21 +320,16 @@ impl HeaderList {
     pub fn is_chunked(&self) -> bool {
         if let Some(enc) = self.0.get(TRANSFER_ENCODING.into()) {
             enc == "chunked"
-        }else{
+        } else {
             false
         }
     }
 
-    pub fn authorization(&self) -> Option<&String> {
-        self.0.get(AUTHORIZATION)
-    }
+    pub fn authorization(&self) -> Option<&String> { self.0.get(AUTHORIZATION) }
 
     /// Sets the location header
     pub fn location(&mut self, path: String) {
-        self.0.insert(
-            LOCATION.into(),
-            path
-        );
+        self.0.insert(LOCATION.into(), path);
     }
 
     pub fn content_range(&mut self, ranges: &RangeList, total: Option<usize>) {
@@ -383,38 +341,31 @@ impl HeaderList {
                 max,
                 if let Some(total) = total {
                     total.to_string()
-                }else{
+                } else {
                     "*".into()
                 }
             )
-        }else{
+        } else {
             format!(
                 "{} */{}",
                 ranges.unit,
                 if let Some(total) = total {
                     total.to_string()
-                }else{
+                } else {
                     "*".into()
                 }
             )
         };
 
-        self.0.insert(
-            CONTENT_RANGE.into(),
-            st
-        );
+        self.0.insert(CONTENT_RANGE.into(), st);
     }
 
     pub fn content_encoding(&mut self, enc: &str) {
         match enc {
-            encoding::COMPRESS |
-            encoding::GZIP =>
-                {self.0.insert(
-                    CONTENT_ENCODING.into(),
-                    enc.into()
-                );},
-            _ =>
-                log::warn!("invalid encoding type: '{}'", enc)
+            encoding::COMPRESS | encoding::GZIP => {
+                self.0.insert(CONTENT_ENCODING.into(), enc.into());
+            }
+            _ => log::warn!("invalid encoding type: '{}'", enc),
         };
     }
 
@@ -424,60 +375,44 @@ impl HeaderList {
 
     /// Sets the last modified header
     pub fn last_modified(&mut self, time: &DateTime<Utc>) {
-        self.0.insert(
-            LAST_MODIFIED.into(),
-            Self::format_date(time)
-        );
+        self.0.insert(LAST_MODIFIED.into(), Self::format_date(time));
     }
 
     pub fn authentication_info(&mut self, val: String) {
-        self.0.insert(
-            AUTHENTICATION_INFO.into(),
-            val
-        );
+        self.0.insert(AUTHENTICATION_INFO.into(), val);
     }
 
     pub fn resp_authenticate(&mut self, val: String) {
-        self.0.insert(
-            WWW_AUTHENTICATE.into(),
-            val
-        );
+        self.0.insert(WWW_AUTHENTICATE.into(), val);
     }
 
     pub fn get(&self, what: &str) -> Option<&str> {
         match self.0.get(what) {
             Some(val) => Some(val),
-            None      => None
+            None => None,
         }
     }
 
-    pub fn has(&self, what: &str) -> bool {
-        self.0.get(what).is_some()
-    }
+    pub fn has(&self, what: &str) -> bool { self.0.get(what).is_some() }
 
     fn format_date(date: &DateTime<Utc>) -> String {
-        date.format("%a, %d %b %Y %T GMT")
-            .to_string()
+        date.format("%a, %d %b %Y %T GMT").to_string()
     }
 }
 
 //I know, this function is hideous.
 fn title_case(s: &str) -> String {
     let mut ret = String::new();
-    ret.push_str(&s
-        .chars()
-        .nth(0)
-        .unwrap()
-        .to_ascii_uppercase()
-        .to_string());
+    ret.push_str(&s.chars().nth(0).unwrap().to_ascii_uppercase().to_string());
 
     for (ind, _) in s.match_indices("-") {
         ret.push_str(&s[ret.len()..=ind]);
-        ret.push_str(&s.chars()
-            .nth(ind+1)
-            .unwrap()
-            .to_ascii_uppercase()
-            .to_string()
+        ret.push_str(
+            &s.chars()
+                .nth(ind + 1)
+                .unwrap()
+                .to_ascii_uppercase()
+                .to_string(),
         );
     }
     ret.push_str(&s[ret.len()..s.len()]);

@@ -1,8 +1,8 @@
-use serde::{Serialize, Deserialize};
-use std::path::{PathBuf, Path};
 use crate::webserver::responses::StatusCode;
-use regex::Regex;
 use num_traits::FromPrimitive;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 use crate::CONFIG;
 
@@ -29,29 +29,28 @@ lazy_static::lazy_static! {
 struct TempRedirect {
     regex: String,
     url:   String,
-    code:  u32
+    code:  u32,
 }
 
 #[derive(Debug)]
 pub struct Redirect {
     regex:     Regex,
     subst_str: String,
-    pub code:  StatusCode
+    pub code:  StatusCode,
 }
 
 impl Redirect {
     pub fn matches(&self, path: &Path) -> bool {
-        self.regex.is_match(&path.to_string_lossy()) 
+        self.regex.is_match(&path.to_string_lossy())
     }
 
     pub fn subst(&self, path: &Path) -> PathBuf {
-        let path: String = path
-            .to_string_lossy()
-            .into();
+        let path: String = path.to_string_lossy().into();
 
         PathBuf::from(
-            self.regex.replace(&path, self.subst_str.as_str())
-                .into_owned()
+            self.regex
+                .replace(&path, self.subst_str.as_str())
+                .into_owned(),
         )
     }
 }

@@ -28,23 +28,23 @@ impl Display for StatusCode {
         use StatusCode::*;
         let wr = match self {
             Ok => "Ok",
-            NotFound            => "Not Found",
-            Forbidden           => "Forbidden",
+            NotFound => "Not Found",
+            Forbidden => "Forbidden",
             InternalServerError => "Internal Server Error",
             VersionNotSupported => "HTTP Version Not Supported",
-            BadRequest          => "Bad Request",
-            NotImplemented      => "Not Implemented",
-            MovedPermanently    => "Moved Permanently",
-            Found               => "Found",
-            NotModified         => "Not Modified",
-            RequestTimeout      => "Request Timeout",
-            PreconditionFailed  => "Precondition Failed",
-            PartialContent      => "Partial Content",
-            MultipleChoice      => "Multiple Choice",
-            NotAcceptable       => "Not Acceptable",
+            BadRequest => "Bad Request",
+            NotImplemented => "Not Implemented",
+            MovedPermanently => "Moved Permanently",
+            Found => "Found",
+            NotModified => "Not Modified",
+            RequestTimeout => "Request Timeout",
+            PreconditionFailed => "Precondition Failed",
+            PartialContent => "Partial Content",
+            MultipleChoice => "Multiple Choice",
+            NotAcceptable => "Not Acceptable",
             RangeNotSatisfiable => "Range Not Satisfiable",
-            Unauthorized        => "Authorization Required",
-            Unknown             => panic!("shouldn't be here")
+            Unauthorized => "Authorization Required",
+            Unknown => panic!("shouldn't be here"),
         };
 
         write!(fmt, "{}", wr)

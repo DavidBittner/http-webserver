@@ -1,17 +1,17 @@
-use crate::webserver::shared::method::*;
 use crate::webserver::shared::headers::*;
+use crate::webserver::shared::method::*;
 
-use std::str::FromStr;
 use std::fmt::{Display, Formatter};
-use url::{ParseError, Url};
 use std::path::PathBuf;
+use std::str::FromStr;
+use url::{ParseError, Url};
 
 #[derive(Debug, PartialEq)]
 pub struct Request {
     pub method:  Method,
     pub path:    PathBuf,
     pub ver:     String,
-    pub headers: HeaderList
+    pub headers: HeaderList,
 }
 
 #[derive(Debug)]
@@ -19,7 +19,7 @@ pub enum RequestParsingError {
     MethodError(UnknownMethodError),
     UrlError(ParseError),
     HeaderError(HeaderError),
-    FormatError
+    FormatError,
 }
 
 impl Display for RequestParsingError {
@@ -29,8 +29,8 @@ impl Display for RequestParsingError {
         match self {
             MethodError(err) => write!(f, "error with method: '{}'", err),
             HeaderError(err) => write!(f, "error with header: '{}'", err),
-            UrlError(err)    => write!(f, "error with url: '{}'", err),
-            FormatError      => write!(f, "could not understand the given request")
+            UrlError(err) => write!(f, "error with url: '{}'", err),
+            FormatError => write!(f, "could not understand the given request"),
         }
     }
 }
@@ -38,9 +38,7 @@ impl Display for RequestParsingError {
 impl std::error::Error for RequestParsingError {}
 
 impl From<HeaderError> for RequestParsingError {
-    fn from(err: HeaderError) -> Self {
-        RequestParsingError::HeaderError(err)
-    }
+    fn from(err: HeaderError) -> Self { RequestParsingError::HeaderError(err) }
 }
 
 impl From<UnknownMethodError> for RequestParsingError {
@@ -50,9 +48,7 @@ impl From<UnknownMethodError> for RequestParsingError {
 }
 
 impl From<ParseError> for RequestParsingError {
-    fn from(err: ParseError) -> Self {
-        RequestParsingError::UrlError(err)
-    }
+    fn from(err: ParseError) -> Self { RequestParsingError::UrlError(err) }
 }
 
 impl FromStr for Request {
@@ -61,12 +57,9 @@ impl FromStr for Request {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use RequestParsingError::*;
 
-        let mut lines: Vec<&str> = s.lines()
-            .collect();
+        let mut lines: Vec<&str> = s.lines().collect();
 
-        let verbs: Vec<&str> = lines.remove(0)
-            .split_whitespace()
-            .collect();
+        let verbs: Vec<&str> = lines.remove(0).split_whitespace().collect();
 
         if verbs.len() != 3 {
             return Err(FormatError);
@@ -81,16 +74,13 @@ impl FromStr for Request {
         }
 
         let method = verbs[0];
-        let url    = verbs[1];
-        let ver    = verbs[2];
+        let url = verbs[1];
+        let ver = verbs[2];
 
         let headers: HeaderList = header_block.parse()?;
 
         let url = if url != "*" {
-            let url = urlencoding::decode(url)
-                .map_err(|_|
-                    FormatError
-                )?;
+            let url = urlencoding::decode(url).map_err(|_| FormatError)?;
 
             match headers.get(HOST) {
                 Some(host) => {
@@ -101,21 +91,18 @@ impl FromStr for Request {
                         .parse(&url)?
                         .path()
                         .to_owned()
-                },
-                None =>
-                    Url::parse(&url)?
-                        .path()
-                        .to_owned()
+                }
+                None => Url::parse(&url)?.path().to_owned(),
             }
-        }else{
+        } else {
             url.to_owned()
         };
-        
-        Ok(Request{
+
+        Ok(Request {
             method: method.parse()?,
             path: url.into(),
-            ver:  ver.into(),
-            headers
+            ver: ver.into(),
+            headers,
         })
     }
 }

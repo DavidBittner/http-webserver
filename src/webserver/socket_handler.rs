@@ -1,5 +1,5 @@
+mod auth_handler;
 pub mod etag;
-mod     auth_handler;
 
 use self::auth_handler::*;
 use super::requests::*;
@@ -7,19 +7,19 @@ use super::responses::*;
 use super::shared::headers::*;
 use super::shared::*;
 
-use std::time::SystemTime;
-use std::net::{TcpStream, SocketAddr};
 use std::io::Read;
+use std::net::{SocketAddr, TcpStream};
+use std::time::SystemTime;
 
-use std::fmt::{Display, Formatter};
 use std::error::Error;
-use std::path::{PathBuf, Path};
+use std::fmt::{Display, Formatter};
+use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
 use log::*;
 
-use crate::CONFIG;
 use super::clf::*;
+use crate::CONFIG;
 
 type Result<T> = std::result::Result<T, SocketError>;
 
@@ -32,14 +32,14 @@ lazy_static::lazy_static! {
 pub struct SocketHandler {
     stream:   TcpStream,
     addr:     SocketAddr,
-    req_buff: String
+    req_buff: String,
 }
 
 #[derive(Debug)]
 pub enum SocketError {
     IoError(std::io::Error),
     RequestError(RequestParsingError),
-    ConnectionClosed
+    ConnectionClosed,
 }
 
 impl Display for SocketError {
@@ -49,7 +49,7 @@ impl Display for SocketError {
         match self {
             IoError(err) => write!(f, "IoError: {}", err),
             RequestError(err) => write!(f, "{}", err),
-            ConnectionClosed  => write!(f, "connection closed by user")
+            ConnectionClosed => write!(f, "connection closed by user"),
         }
     }
 }
@@ -57,15 +57,11 @@ impl Display for SocketError {
 impl Error for SocketError {}
 
 impl From<RequestParsingError> for SocketError {
-    fn from(err: RequestParsingError) -> Self {
-        SocketError::RequestError(err)
-    }
+    fn from(err: RequestParsingError) -> Self { SocketError::RequestError(err) }
 }
 
 impl From<std::io::Error> for SocketError {
-    fn from(err: std::io::Error) -> Self {
-        SocketError::IoError(err)
-    }
+    fn from(err: std::io::Error) -> Self { SocketError::IoError(err) }
 }
 
 use std::io::Result as ioResult;
@@ -76,7 +72,7 @@ impl SocketHandler {
         Ok(SocketHandler {
             addr:     stream.peer_addr()?,
             stream:   stream,
-            req_buff: String::new()
+            req_buff: String::new(),
         })
     }
 
@@ -91,7 +87,7 @@ impl SocketHandler {
                     debug!("\n---->\n{:#?}", req);
                     if req.ver != "HTTP/1.1" {
                         Response::unsupported_version()
-                    }else{
+                    } else {
                         let url = SocketHandler::sterilize_path(&req.path);
 
                         let auth_handler = AuthHandler::new(&url);
@@ -102,32 +98,27 @@ impl SocketHandler {
                                     passed_auth = Some(passed);
                                     if !passed {
                                         warn!(
-                                            "connection '{}' failed authentication",
+                                            "connection '{}' failed \
+                                             authentication",
                                             self.addr
                                         );
                                         auth_handler.create_unauthorized(req)
-                                    }else{
+                                    } else {
                                         match req.method {
-                                            Method::Get => {
-                                                self.get(&req)
-                                            },
+                                            Method::Get => self.get(&req),
                                             Method::Head => {
                                                 let mut resp = self.get(&req);
                                                 resp.data = None;
                                                 resp
-                                            },
+                                            }
                                             Method::Options => {
                                                 self.options(&req)
-                                            },
-                                            Method::Trace => {
-                                                self.trace(&req)
-                                            },
-                                            _ =>{
-                                                Response::not_implemented()
                                             }
+                                            Method::Trace => self.trace(&req),
+                                            _ => Response::not_implemented(),
                                         }
                                     }
-                                },
+                                }
                                 Err(err) => {
                                     warn!(
                                         "failed parsing auth header: '{:?}'",
@@ -136,7 +127,7 @@ impl SocketHandler {
                                     Response::bad_request()
                                 }
                             }
-                        }else{
+                        } else {
                             warn!(
                                 "failed to create auth_handler: '{:?}'",
                                 auth_handler.unwrap_err()
@@ -144,8 +135,7 @@ impl SocketHandler {
                             Response::internal_error()
                         }
                     }
-
-                },
+                }
                 Err(err) => {
                     use SocketError::*;
                     match err {
@@ -155,16 +145,16 @@ impl SocketHandler {
                                 TimedOut => {
                                     error!("request timed out: '{}'", err);
                                     Response::timed_out()
-                                },
+                                }
                                 _ => {
                                     error!("io error occurred: '{}'", err);
                                     Response::bad_request()
                                 }
                             }
-                        },
+                        }
                         ConnectionClosed => {
                             return Ok(());
-                        },
+                        }
                         _ => {
                             error!("error parsing request:\n\t{}", err);
                             Response::bad_request()
@@ -186,21 +176,24 @@ impl SocketHandler {
                             AuthHandler::create_passed(
                                 &url,
                                 req,
-                                &mut resp.headers
+                                &mut resp.headers,
                             );
                         }
                     }
 
-                    conn = req.headers
+                    conn = req
+                        .headers
                         .get(headers::CONNECTION)
                         .unwrap_or(connection::LONG_LIVED)
                         .into()
-                },
-                Err(_) =>
-                    conn = resp.headers
+                }
+                Err(_) => {
+                    conn = resp
+                        .headers
                         .get(headers::CONNECTION)
                         .unwrap_or(connection::CLOSE)
                         .into()
+                }
             };
 
             resp.headers.connection(&conn);
@@ -208,9 +201,8 @@ impl SocketHandler {
             trace!("response written to '{}'", self.addr);
 
             match conn.to_lowercase().as_str() {
-                connection::CLOSE =>
-                    break,
-                _ => ()
+                connection::CLOSE => break,
+                _ => (),
             };
         }
 
@@ -233,24 +225,21 @@ impl SocketHandler {
                 Ok(siz) => {
                     if siz != 0 {
                         let dat = &in_buff[0..siz];
-                        let dat: String = String::from_utf8_lossy(&dat)
-                            .into();
+                        let dat: String = String::from_utf8_lossy(&dat).into();
 
                         self.req_buff.push_str(&dat);
                         start = Instant::now();
-                    }else{
+                    } else {
                         use std::net::Shutdown;
                         self.stream.shutdown(Shutdown::Both)?;
                         return Err(SocketError::ConnectionClosed);
                     }
-                },
+                }
                 Err(err) => {
                     use std::io::ErrorKind;
                     match err.kind() {
-                        ErrorKind::WouldBlock =>
-                            continue,
-                        _ =>
-                            return Err(err.into())
+                        ErrorKind::WouldBlock => continue,
+                        _ => return Err(err.into()),
                     }
                 }
             }
@@ -258,8 +247,7 @@ impl SocketHandler {
 
         //Can unwrap due to the fact it will only get here if
         //we know the buffer contains the marker.
-        let pos = self.req_buff.find("\r\n\r\n")
-            .unwrap();
+        let pos = self.req_buff.find("\r\n\r\n").unwrap();
 
         //Add four to the pos because we want to keep the ending chars
         let mut req_str = self.req_buff.split_off(pos + 4);
@@ -279,33 +267,26 @@ impl SocketHandler {
         match resp.headers.is_chunked() {
             true => {
                 resp.write_chunked(&mut self.stream)?;
-            },
-            false =>
-                resp.write_self(&mut self.stream)?
+            }
+            false => resp.write_self(&mut self.stream)?,
         };
 
         Ok(())
     }
 
     fn sterilize_path(path: &PathBuf) -> PathBuf {
-        let has_slash = path.as_os_str()
-            .to_string_lossy()
-            .ends_with("/");
+        let has_slash = path.as_os_str().to_string_lossy().ends_with("/");
 
         let rel_path = if path.starts_with("/") {
-            path.strip_prefix("/")
-                .unwrap()
-        }else{
+            path.strip_prefix("/").unwrap()
+        } else {
             &path
         };
 
         if has_slash {
-            PathBuf::from(
-                format!("{}/", CONFIG.root.join(rel_path).display())
-            )
-        }else{
-            CONFIG.root
-                .join(rel_path)
+            PathBuf::from(format!("{}/", CONFIG.root.join(rel_path).display()))
+        } else {
+            CONFIG.root.join(rel_path)
         }
     }
 
@@ -320,15 +301,16 @@ impl SocketHandler {
 
             if not_mod.is_some() {
                 not_mod.unwrap()
-            }else{
-                let comp = CONFIG.root.join(PathBuf::from(".well-known/access.log"));
+            } else {
+                let comp =
+                    CONFIG.root.join(PathBuf::from(".well-known/access.log"));
                 if url.clone() == comp {
                     SocketHandler::log_response()
-                }else{
+                } else {
                     Response::path_response(&url, req)
                 }
             }
-        }else{
+        } else {
             Response::forbidden()
         }
     }
@@ -337,14 +319,14 @@ impl SocketHandler {
         if let Ok(meta) = path.metadata() {
             if let Ok(modi) = meta.modified() {
                 Some(modi)
-            }else{
+            } else {
                 warn!(
                     "modified date for file '{}' couldn't be retrieved",
                     path.display()
                 );
                 None
             }
-        }else{
+        } else {
             warn!(
                 "metadata for file '{}' couldn't be retrieved",
                 path.display()
@@ -353,10 +335,13 @@ impl SocketHandler {
         }
     }
 
-    fn check_modified_since(req: &Request, full_path: &Path) -> Option<Response> {
+    fn check_modified_since(
+        req: &Request,
+        full_path: &Path,
+    ) -> Option<Response> {
         if let Some(date) = req.headers.get_date(&headers::IF_MODIFIED_SINCE) {
             let check_time: SystemTime = date.into();
-            let modi:       SystemTime = Self::file_modified(full_path)?;
+            let modi: SystemTime = Self::file_modified(full_path)?;
 
             use chrono::{DateTime, Utc};
             //If the file has been modified after the check_time
@@ -367,26 +352,30 @@ impl SocketHandler {
             if check_time < modi {
                 debug!("has been modified");
                 None
-            }else{
+            } else {
                 debug!("hasn't been modified");
                 Some(Response::not_modified(full_path))
             }
-        }else{
+        } else {
             None
         }
     }
 
-    fn check_unmodified_since(req: &Request, full_path: &Path) -> Option<Response> {
-        if let Some(date) = req.headers.get_date(&headers::IF_UNMODIFIED_SINCE) {
+    fn check_unmodified_since(
+        req: &Request,
+        full_path: &Path,
+    ) -> Option<Response> {
+        if let Some(date) = req.headers.get_date(&headers::IF_UNMODIFIED_SINCE)
+        {
             let check_time: SystemTime = date.into();
-            let modi:       SystemTime = Self::file_modified(full_path)?;
+            let modi: SystemTime = Self::file_modified(full_path)?;
 
             if check_time >= modi {
                 None
-            }else{
+            } else {
                 Some(Response::not_modified(full_path))
             }
-        }else{
+        } else {
             None
         }
     }
@@ -399,22 +388,23 @@ impl SocketHandler {
                 let comp_etag = file_etag(full_path).ok()?;
                 if &comp_etag == *etag {
                     None
-                }else{
+                } else {
                     Some(Response::precondition_failed())
                 }
-            },
-            None =>
-                None
+            }
+            None => None,
         }
     }
 
-    fn check_if_none_match(req: &Request, full_path: &Path) -> Option<Response> {
+    fn check_if_none_match(
+        req: &Request,
+        full_path: &Path,
+    ) -> Option<Response> {
         use etag::*;
 
         match &req.headers.get(IF_NONE_MATCH) {
             Some(etags) => {
-                let etags: Vec<_> = etags.split(",")
-                    .collect();
+                let etags: Vec<_> = etags.split(",").collect();
 
                 let comp_etag = file_etag(full_path).ok()?;
                 for etag in etags.iter() {
@@ -423,9 +413,8 @@ impl SocketHandler {
                     }
                 }
                 Some(Response::precondition_failed())
-            },
-            None =>
-                None
+            }
+            None => None,
         }
     }
 
@@ -455,7 +444,7 @@ impl SocketHandler {
 
         if url.starts_with(&CONFIG.root) {
             Response::options_response(&url)
-        }else{
+        } else {
             Response::forbidden()
         }
     }

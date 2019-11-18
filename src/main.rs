@@ -1,12 +1,12 @@
 use std::io;
 
-mod webserver;
 mod settings;
+mod webserver;
 
-use settings::Settings;
-use webserver::WebServer;
 use config::Config;
 use log::*;
+use settings::Settings;
+use webserver::WebServer;
 
 lazy_static::lazy_static! {
     pub static ref CONFIG: Settings = {
@@ -39,10 +39,7 @@ lazy_static::lazy_static! {
 fn main() -> io::Result<()> {
     pretty_env_logger::init_custom_env("SERV_LOG");
 
-    debug!(
-        "initialized with config: \n{:#?}\n",
-        *CONFIG
-    );
+    debug!("initialized with config: \n{:#?}\n", *CONFIG);
 
     let mut server = WebServer::new()?;
 
