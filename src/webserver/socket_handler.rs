@@ -1,6 +1,8 @@
 mod auth_handler;
 pub mod etag;
 
+use is_executable::IsExecutable;
+
 use self::auth_handler::*;
 use super::requests::*;
 use super::responses::*;
@@ -71,7 +73,7 @@ impl SocketHandler {
 
         Ok(SocketHandler {
             addr:     stream.peer_addr()?,
-            stream:   stream,
+            stream,
             req_buff: String::new(),
         })
     }
@@ -301,13 +303,17 @@ impl SocketHandler {
 
             if not_mod.is_some() {
                 not_mod.unwrap()
-            } else {
+            }else {
                 let comp =
                     CONFIG.root.join(PathBuf::from(".well-known/access.log"));
                 if url.clone() == comp {
                     SocketHandler::log_response()
-                } else {
-                    Response::path_response(&url, req)
+                }else {
+                    if url.is_executable() {
+                        Response::cgi_response(&url, req)
+                    }else{
+                        Response::path_response(&url, req)
+                    }
                 }
             }
         } else {

@@ -86,8 +86,8 @@ impl Response {
                 headers.chunked_encoding();
 
                 Self {
-                    code:    code,
-                    headers: headers,
+                    code,
+                    headers,
                     data:    Some(data.into()),
                 }
             }
@@ -190,7 +190,7 @@ impl Response {
 
         Self {
             code:    StatusCode::NotModified,
-            headers: headers,
+            headers,
             data:    None,
         }
     }
@@ -230,7 +230,7 @@ impl Response {
 
         Self {
             code:    StatusCode::Ok,
-            headers: headers,
+            headers,
             data:    None,
         }
     }
@@ -527,6 +527,63 @@ impl Response {
             Err(err) => {
                 error!("failed to generate directory listing: '{}'", err);
                 Response::internal_error()
+            }
+        }
+    }
+
+    pub fn cgi_response(path: &Path, req: &Request) -> Self {
+        use std::process::{
+            Command,
+            Stdio
+        };
+
+        let envs: Vec<(String, String)> = vec![
+            ("SCRIPT_NAME".into(),
+             path
+                .file_stem()
+                .unwrap()
+                .to_string_lossy()
+                .into()
+            ),
+            ("SCRIPT_URI".into(),
+             path
+                .display()
+                .to_string()
+                .into()
+            ),
+            ("SCRIPT_FILENAME".into(),
+             path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into()
+            ),
+        ];
+
+        let com = Command::new(path)
+            .envs(envs.into_iter())
+            .stdin(Stdio::null())
+            .output();
+
+        match com {
+            Ok(output) => {
+                let mut headers = HeaderList::response_headers();
+                headers.content("text/plain", None, output.stdout.len());
+
+                Self {
+                    code:    StatusCode::Ok,
+                    headers: HeaderList::response_headers(),
+                    data:    Some(ResponseData::Buffer(output.stdout))
+                }
+            },
+            Err(err) => {
+                warn!(
+                    "error occurred when executing script: '{}',\
+                    the script is at: '{}'",
+                    err,
+                    path.display()
+                );
+                Self::internal_error()
             }
         }
     }

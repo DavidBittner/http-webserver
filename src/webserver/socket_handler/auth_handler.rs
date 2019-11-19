@@ -60,7 +60,14 @@ impl AuthHandler {
             }
 
             let auth: SuppliedAuth =
-                req.headers.authorization().unwrap().parse()?;
+                req.headers
+                    .authorization()
+                    .unwrap()
+                    .parse()?;
+
+            if !auth_file.allows.contains(&req.method) {
+                return Ok(false);
+            }
 
             match auth {
                 SuppliedAuth::Basic { auth } => {
