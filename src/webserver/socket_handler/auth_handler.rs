@@ -193,13 +193,6 @@ impl AuthHandler {
 
                     let digest = md5::compute(to_hash.as_bytes());
 
-                    log::debug!(
-                        "{:x} == {} = {}",
-                        digest,
-                        response.to_lowercase(),
-                        format!("{:x}", digest) == response
-                    );
-
                     if format!("{:x}", digest) == response {
                         if !auth_file.allows.contains(&req.method) {
                             Ok(MethodNotAllowed)
@@ -263,13 +256,10 @@ impl AuthHandler {
     }
 
     pub fn create_passed(loc: &Path, req: &Request, headers: &mut HeaderList) {
-        let auth_file = if let Ok(auth) = Self::find_config(loc) {
-            if let Some(auth) = auth {
-                auth
-            } else {
-                return;
-            }
-        } else {
+        let auth_handler = AuthHandler::new(loc).unwrap();
+        let auth_file = if let Some(file) = auth_handler.auth_file {
+            file
+        }else{
             return;
         };
 
