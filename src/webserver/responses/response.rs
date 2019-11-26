@@ -12,6 +12,7 @@ use crate::webserver::requests::Request;
 use crate::webserver::shared::*;
 use crate::webserver::socket_handler::etag::*;
 use crate::CONFIG;
+use crate::webserver::socket_handler::auth_handler::*;
 
 use std::io::Result as ioResult;
 use std::io::{Cursor, Write};
@@ -222,19 +223,21 @@ impl Response {
         )
     }
 
-    pub fn options_response(_path: &Path) -> Self {
+    pub fn options_response(path: &Path) -> Self {
         let mut headers = HeaderList::response_headers();
-        headers.allow(&[
-            Method::Post,
-            Method::Get,
-            Method::Trace,
-            Method::Head,
-        ]);
-
-        Self {
-            code:    StatusCode::Ok,
-            headers,
-            data:    None,
+        match AuthHandler::new(path) {
+            Ok(handler) => {
+                headers.allow(&handler.allows());
+                Self {
+                    code: StatusCode::Ok,
+                    data: None,
+                    headers
+                }
+            },
+            Err(err) => {
+                warn!("failed to create auth handler: '{:#?}'", err);
+                Response::unauthorized(headers)
+            }
         }
     }
 

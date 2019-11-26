@@ -1,4 +1,4 @@
-mod auth_handler;
+pub mod auth_handler;
 pub mod etag;
 
 use is_executable::IsExecutable;

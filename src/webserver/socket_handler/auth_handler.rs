@@ -52,6 +52,25 @@ impl AuthHandler {
         Ok(Self { auth_file })
     }
 
+    pub fn allows(&self) -> Vec<Method> {
+        match self.auth_file {
+            Some(ref file) => {
+                file.allows.iter()
+                    .cloned()
+                    .collect()
+            },
+            None => vec![
+                Method::Put,
+                Method::Delete,
+                Method::Post,
+                Method::Options,
+                Method::Trace,
+                Method::Get,
+                Method::Head
+            ]
+        }
+    }
+
     pub fn check(&self, req: &Request) -> Result<bool, SuppliedAuthError> {
         if let Some(ref auth_file) = self.auth_file {
             let auth_text = req.headers.authorization();

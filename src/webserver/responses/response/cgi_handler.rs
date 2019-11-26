@@ -2,9 +2,6 @@ use crate::webserver::requests::Request;
 use crate::webserver::responses::{Response, StatusCode};
 use crate::webserver::shared::HeaderList;
 
-use regex::*;
-use num_traits::FromPrimitive;
-
 use std::path::{PathBuf, Path};
 use std::io::Write;
 use std::process::{
@@ -16,6 +13,8 @@ use std::fmt::{
     Formatter,
     Display
 };
+
+use log::*;
 
 pub struct CgiHandler<'a> {
     req: &'a Request,
@@ -125,6 +124,11 @@ impl<'a> CgiHandler<'a> {
 
                 match header_lines.parse::<HeaderList>() {
                     Ok(mut headers) => {
+                        if !headers.has("content-type") {
+                            warn!("script did not return content-type header");
+                            return Ok(Response::internal_error());
+                        }
+
                         let mut status_c: Option<StatusCode> = None;
                         if let Some(status) = headers.get("status") {
                             let (s, e) = status.split_at(status.find(" ")
@@ -147,13 +151,13 @@ impl<'a> CgiHandler<'a> {
 
                         headers.remove("status");
                         headers.merge(HeaderList::response_headers());
+                        headers.content_length(buff.len());
+                        headers.chunked_encoding();
 
                         let buff: String = buff.lines()
                             .skip(header_lines.len())
                             .collect();
-                        log::debug!("{:#?}", buff);
 
-                        headers.content_length(buff.len());
                         if headers.get("location").is_some() {
                             Ok(Response {
                                 code:   status_c.unwrap_or(StatusCode::Found),
@@ -170,15 +174,11 @@ impl<'a> CgiHandler<'a> {
                     },
                     Err(err) => {
                         log::warn!(
-                            "values matching headers found, parse failed: '{}'",
+                            "values matching headers found, but failed to parse: '{:#?}'",
                             err
                         );
 
-                        Ok(Response {
-                            code:    StatusCode::Ok,
-                            data:    None,
-                            headers: HeaderList::response_headers()
-                        })
+                        Ok(Response::internal_error())
                     }
                 }
             },
