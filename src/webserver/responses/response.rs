@@ -131,11 +131,13 @@ impl Response {
         )
     }
 
-    pub fn not_allowed() -> Self {
+    pub fn not_allowed(allow: Vec<Method>) -> Self {
+        let mut headers = HeaderList::response_headers();
+        headers.allow(&allow);
         Response::error(
             StatusCode::NotAllowed,
             "The requested method is not allowed at this URL.",
-            HeaderList::response_headers()
+            headers
         )
     }
 

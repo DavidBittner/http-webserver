@@ -110,7 +110,9 @@ impl SocketHandler {
                                         if res == Failed {
                                             auth_handler.create_unauthorized(req)
                                         }else{
-                                            Response::not_allowed()
+                                            let allows = auth_handler
+                                                .allows();
+                                            Response::not_allowed(allows)
                                         }
                                     } else {
                                         passed_auth = Some(true);
