@@ -548,19 +548,11 @@ impl SocketHandler {
         if url.starts_with(&CONFIG.root) {
             match std::fs::remove_file(&url) {
                 Ok(_) => {
-                    let mut headers = HeaderList::response_headers();
-                    let data = format!(
-                        "File '{}' deleted successfully.",
-                        url.display()
-                    );
-
-                    headers.content("text/plain", None, data.len());
-                    trace!("file deleted at '{}'", url.display());
-                    Response {
-                        code: StatusCode::Ok,
-                        data: Some(data.into_bytes().into()),
-                        headers: HeaderList::response_headers()
-                    }
+                    Response::error(
+                        StatusCode::Ok,
+                        &format!("File '{}' deleted successfully.", url.display()),
+                        HeaderList::response_headers()
+                    )
                 },
                 Err(err) => {
                     use std::io::ErrorKind::*;
@@ -568,19 +560,11 @@ impl SocketHandler {
                         PermissionDenied =>
                             Response::forbidden(),
                         NotFound => {
-                            let mut headers = HeaderList::response_headers();
-                            let data = format!(
-                                "File '{}' deleted successfully.",
-                                url.display()
-                            );
-
-                            headers.content("text/plain", None, data.len());
-                            trace!("file deleted at '{}'", url.display());
-                            Response {
-                                code: StatusCode::Ok,
-                                data: Some(data.into_bytes().into()),
-                                headers: HeaderList::response_headers()
-                            }
+                            Response::error(
+                                StatusCode::Ok,
+                                &format!("File '{}' deleted successfully.", url.display()),
+                                HeaderList::response_headers()
+                            )
                         },
                         _ => {
                             warn!(

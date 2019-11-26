@@ -79,7 +79,7 @@ pub struct Response {
 }
 
 impl Response {
-    fn error(code: StatusCode, desc: &str, mut headers: HeaderList) -> Self {
+    pub fn error(code: StatusCode, desc: &str, mut headers: HeaderList) -> Self {
         let holder = ErrorTemplate::new(code.clone(), desc);
         let data = TERA.render("error.html", &holder);
 
