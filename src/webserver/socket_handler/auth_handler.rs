@@ -204,7 +204,11 @@ impl AuthHandler {
                 }
             }
         } else {
-            Ok(Passed)
+            if self.allows().contains(&req.method) {
+                Ok(Passed)
+            }else{
+                Ok(MethodNotAllowed)
+            }
         }
     }
 

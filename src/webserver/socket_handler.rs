@@ -299,6 +299,7 @@ impl SocketHandler {
             }
         }
 
+        debug!("remaining buffer length: {}", self.req_buff.len());
         Ok(req)
     }
 
@@ -544,10 +545,13 @@ impl SocketHandler {
         let url = SocketHandler::sterilize_path(&req.path);
         if url.starts_with(&CONFIG.root) {
             match std::fs::remove_file(&url) {
-                Ok(_) => Response {
-                    code: StatusCode::Ok,
-                    data: None,
-                    headers: HeaderList::response_headers()
+                Ok(_) => {
+                    trace!("file deleted at '{}'", url.display());
+                    Response {
+                        code: StatusCode::Ok,
+                        data: None,
+                        headers: HeaderList::response_headers()
+                    }
                 },
                 Err(err) => {
                     warn!(
@@ -559,6 +563,11 @@ impl SocketHandler {
                     match err.kind() {
                         PermissionDenied =>
                             Response::forbidden(),
+                        NotFound => Response {
+                            code: StatusCode::Ok,
+                            data: None,
+                            headers: HeaderList::response_headers()
+                        },
                         _                =>
                             Response::internal_error()
                     }
