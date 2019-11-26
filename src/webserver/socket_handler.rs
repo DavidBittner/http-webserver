@@ -271,8 +271,10 @@ impl SocketHandler {
         if let Some(len) = req.headers.get(headers::CONTENT_LENGTH) {
             let len: usize = len.parse()
                 .unwrap_or(0);
+            log::debug!("len: '{}'", len);
 
             let diff = len - self.req_buff.len();
+            log::debug!("diff: '{}'", diff);
             if diff <= 0 {
                 let payload = self.req_buff.split_off(len);
                 log::debug!("first: '{}'", payload);
