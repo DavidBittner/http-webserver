@@ -80,8 +80,8 @@ impl AuthHandler {
         use AuthCheckResult::*;
 
         if let Some(ref auth_file) = self.auth_file {
-            if !auth_file.allows.contains(req.method) {
-                Ok(MethodNotAllowed)
+            if !auth_file.allows.contains(&req.method) {
+                return Ok(MethodNotAllowed);
             }
 
             let auth_text = req.headers.authorization();
