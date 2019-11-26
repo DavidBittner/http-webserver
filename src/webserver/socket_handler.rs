@@ -275,6 +275,7 @@ impl SocketHandler {
             let diff = len - self.req_buff.len();
             if diff <= 0 {
                 let payload = self.req_buff.split_off(len);
+                log::debug!("first: '{}'", payload);
                 req.set_payload(payload.into_bytes());
             }else{
                 let mut buff = vec![0; diff];
@@ -284,6 +285,7 @@ impl SocketHandler {
                     .into_bytes();
 
                 temp.append(&mut buff);
+                log::debug!("second: '{:#?}'", temp); 
                 req.set_payload(temp);
             }
             let mut buff = vec![0; len];
