@@ -131,6 +131,14 @@ impl Response {
         )
     }
 
+    pub fn not_allowed() -> Self {
+        Response::error(
+            StatusCode::NotAllowed,
+            "The requested method is not allowed at this URL.",
+            HeaderList::response_headers()
+        )
+    }
+
     pub fn range_not_satisfiable() -> Self {
         Response::error(
             StatusCode::RangeNotSatisfiable,

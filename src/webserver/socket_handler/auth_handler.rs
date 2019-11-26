@@ -20,6 +20,13 @@ lazy_static::lazy_static! {
         Default::default();
 }
 
+#[derive(Debug, PartialEq)]
+pub enum AuthCheckResult {
+    Failed,
+    MethodNotAllowed,
+    Passed
+}
+
 #[derive(Debug)]
 pub struct AuthHandler {
     auth_file: Option<Arc<AuthFile>>,
@@ -69,11 +76,17 @@ impl AuthHandler {
         }
     }
 
-    pub fn check(&self, req: &Request) -> Result<bool, SuppliedAuthError> {
+    pub fn check(&self, req: &Request) -> Result<AuthCheckResult, SuppliedAuthError> {
+        use AuthCheckResult::*;
+
         if let Some(ref auth_file) = self.auth_file {
+            if !auth_file.allows.contains(req.method) {
+                Ok(MethodNotAllowed)
+            }
+
             let auth_text = req.headers.authorization();
             if auth_text.is_none() {
-                return Ok(false);
+                return Ok(Failed);
             }
 
             let auth: SuppliedAuth =
@@ -83,7 +96,7 @@ impl AuthHandler {
                     .parse()?;
 
             if !auth_file.allows.contains(&req.method) {
-                return Ok(false);
+                return Ok(Failed);
             }
 
             match auth {
@@ -107,9 +120,13 @@ impl AuthHandler {
                     );
 
                     if let Some(password) = password {
-                        Ok(given_password == password)
+                        if given_password == password {
+                            Ok(Passed)
+                        }else{
+                            Ok(Failed)
+                        }
                     } else {
-                        Ok(false)
+                        Ok(Failed)
                     }
                 }
                 SuppliedAuth::Digest {
@@ -124,12 +141,12 @@ impl AuthHandler {
                     opaque: _opaque,
                 } => {
                     if realm != auth_file.realm {
-                        return Ok(false);
+                        return Ok(Failed);
                     }
 
                     let password = auth_file.get_password(&username);
                     if password.is_none() {
-                        return Ok(false);
+                        return Ok(Failed);
                     }
 
                     let password = password.unwrap();
@@ -161,11 +178,15 @@ impl AuthHandler {
                         format!("{:x}", digest) == response
                     );
 
-                    Ok(format!("{:x}", digest) == response)
+                    if format!("{:x}", digest) == response {
+                        Ok(Passed)
+                    }else{
+                        Ok(Failed)
+                    }
                 }
             }
         } else {
-            Ok(true)
+            Ok(Passed)
         }
     }
 

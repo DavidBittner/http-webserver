@@ -96,16 +96,24 @@ impl SocketHandler {
                         if let Ok(auth_handler) = auth_handler {
                             let res = auth_handler.check(req);
                             match res {
-                                Ok(passed) => {
-                                    passed_auth = Some(passed);
-                                    if !passed {
+                                Ok(res) => {
+                                    use AuthCheckResult::*;
+
+                                    if res != Passed {
+                                        passed_auth = Some(false);
                                         warn!(
                                             "connection '{}' failed \
                                              authentication",
                                             self.addr
                                         );
-                                        auth_handler.create_unauthorized(req)
+
+                                        if res == Failed {
+                                            auth_handler.create_unauthorized(req)
+                                        }else{
+                                            Response::not_allowed()
+                                        }
                                     } else {
+                                        passed_auth = Some(true);
                                         match req.method {
                                             Method::Get => self.get(&req),
                                             Method::Head => {
