@@ -208,11 +208,11 @@ impl Response {
     }
 
     pub fn unauthorized(headers: HeaderList) -> Self {
-        Self {
-            code: StatusCode::Unauthorized,
-            data: None,
-            headers,
-        }
+        Response::error(
+            StatusCode::Unauthorized,
+            "You must be authorized to access this URL.",
+            headers
+        )
     }
 
     pub fn precondition_failed() -> Self {

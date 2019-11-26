@@ -44,15 +44,26 @@ impl AuthHandler {
             let cache = AUTH_FILE_CACHE.read().unwrap();
 
             if let Some(cached) = cache.get(temp_path) {
+                log::debug!(
+                    "using cached auth for: '{}'",
+                    temp_path.display()
+                );
                 Some(Arc::clone(cached))
             } else {
+                log::debug!(
+                    "using new auth for: '{}'",
+                    temp_path.display()
+                );
                 Self::find_config(temp_path)?.map(|inner| Arc::new(inner))
             }
         };
 
         if let Some(auth_file) = &auth_file {
             let mut cache = AUTH_FILE_CACHE.write().unwrap();
-
+            log::debug!(
+                "auth file added to cache for path: '{}'",
+                temp_path.display()
+            );
             cache.insert(temp_path.into(), auth_file.clone());
         }
 
