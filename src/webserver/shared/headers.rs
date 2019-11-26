@@ -403,6 +403,10 @@ impl HeaderList {
         }
     }
 
+    pub fn remove(&mut self, val: &str) {
+        self.0.remove(val);
+    }
+
     pub fn has(&self, what: &str) -> bool { self.0.get(what).is_some() }
 
     fn format_date(date: &DateTime<Utc>) -> String {

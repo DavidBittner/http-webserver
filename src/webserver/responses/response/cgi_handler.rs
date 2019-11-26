@@ -17,12 +17,6 @@ use std::fmt::{
     Display
 };
 
-lazy_static::lazy_static! {
-    static ref HEADER_REG: Regex =
-        Regex::new("(.+) ?: ?(.+)")
-            .expect("cgi handler regex");
-}
-
 pub struct CgiHandler<'a> {
     req: &'a Request,
     com: Command,
@@ -33,6 +27,7 @@ pub enum CgiHandlerError {
     NoFileName(PathBuf),
     IoError(std::io::Error),
     FromUtf8Error(std::string::FromUtf8Error),
+    InvalidStatus(String),
     NoStdinError
 }
 
@@ -59,6 +54,11 @@ impl Display for CgiHandlerError {
                 fmt,
                 "could not parse utf8 from stdout of process: '{}'",
                 err
+            ),
+            InvalidStatus(s) => write!(
+                fmt,
+                "script returned invalid status line: '{}'",
+                s
             )
         }
     }
@@ -120,29 +120,49 @@ impl<'a> CgiHandler<'a> {
         match self.buff {
             Some(buff) => {
                 let header_lines: String = buff.lines()
-                    .take_while(|l| HEADER_REG.is_match(l))
-                    .filter(|l| !l.is_empty())
+                    .take_while(|l| !l.is_empty())
                     .collect();
 
                 match header_lines.parse::<HeaderList>() {
                     Ok(mut headers) => {
+                        let mut status_c: Option<StatusCode> = None;
+                        if let Some(status) = headers.get("status") {
+                            let (s, e) = status.split_at(status.find(" ")
+                                .ok_or(
+                                    CgiHandlerError::InvalidStatus(
+                                        status.into()
+                                    )
+                                )?
+                            );
+                            status_c = Some(
+                                StatusCode::Custom(
+                                    String::from(e.trim()),
+                                    s.trim().parse()
+                                        .map_err(|_|
+                                            CgiHandlerError::InvalidStatus(status.into())
+                                        )?,
+                                )
+                            );
+                        }
+
+                        headers.remove("status");
                         headers.merge(HeaderList::response_headers());
 
-                        let status: Option<StatusCode> = headers.get("status")
-                            .map(|n| StatusCode::from_u32(n.parse::<u32>()
-                                    .expect("invalid u32"))
-                                    .expect("invalid status code"));
+                        let buff: String = buff.lines()
+                            .skip(header_lines.len())
+                            .collect();
+                        log::debug!("{:#?}", buff);
 
                         headers.content_length(buff.len());
                         if headers.get("location").is_some() {
                             Ok(Response {
-                                code:   status.unwrap_or(StatusCode::Found),
+                                code:   status_c.unwrap_or(StatusCode::Found),
                                 data:   Some(buff.into_bytes().into()),
                                 headers
                             })
                         }else{
                             Ok(Response {
-                                code:   status.unwrap_or(StatusCode::Ok),
+                                code:   status_c.unwrap_or(StatusCode::Ok),
                                 data:   Some(buff.into_bytes().into()),
                                 headers
                             })

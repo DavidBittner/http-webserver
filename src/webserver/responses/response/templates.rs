@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 #[derive(Serialize, Deserialize)]
 pub struct ErrorTemplate {
     code_phrase: String,
-    code_num:    u32,
+    code_num:    usize,
     description: String,
 }
 
@@ -17,7 +17,7 @@ impl ErrorTemplate {
     pub fn new(code: StatusCode, desc: &str) -> Self {
         Self {
             code_phrase: format!("{}", code),
-            code_num:    code.to_u32().unwrap(),
+            code_num:    code.to_num(),
             description: desc.into(),
         }
     }
@@ -61,7 +61,7 @@ impl DirectoryListing {
 
         Ok(Self {
             dir_path: path.file_name().unwrap_or(Default::default()).into(),
-            files:    files,
+            files,
         })
     }
 }

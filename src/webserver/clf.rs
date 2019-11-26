@@ -2,7 +2,6 @@ use super::requests::*;
 use super::responses::*;
 use super::shared::headers::*;
 use chrono::{DateTime, Utc};
-use num_traits::ToPrimitive;
 use std::net::SocketAddr;
 
 pub struct LogEntry {
@@ -34,7 +33,7 @@ impl LogEntry {
             userid:       None,
             time:         Utc::now(),
             req_line:     req_line,
-            status_code:  resp.code,
+            status_code:  resp.code.clone(),
             sent_size:    cont_len,
         }
     }
@@ -56,7 +55,7 @@ impl Display for LogEntry {
             usrid,
             date_form,
             self.req_line,
-            self.status_code.to_u16().unwrap(),
+            self.status_code.to_num(),
             self.sent_size
         )
     }

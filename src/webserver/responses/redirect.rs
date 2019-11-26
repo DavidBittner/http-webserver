@@ -1,6 +1,6 @@
 use crate::webserver::responses::StatusCode;
-use num_traits::FromPrimitive;
 use regex::Regex;
+use std::convert::TryInto;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -14,8 +14,9 @@ lazy_static::lazy_static! {
             .iter()
             .map(|conf| {
                 Redirect {
-                    code: StatusCode::from_u32(conf.code)
-                        .unwrap_or(StatusCode::Unknown),
+                    code: StatusCode::from_num(conf.code
+                              .try_into()
+                              .unwrap()),
                     subst_str: conf.url.clone(),
                     regex: Regex::new(&conf.regex)
                         .expect("failed to compile regex")

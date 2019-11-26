@@ -19,7 +19,6 @@ use std::path::{Path, PathBuf};
 
 use log::*;
 use mime::Mime;
-use num_traits::ToPrimitive;
 use tera::Tera;
 
 lazy_static::lazy_static! {
@@ -80,7 +79,7 @@ pub struct Response {
 
 impl Response {
     fn error(code: StatusCode, desc: &str, mut headers: HeaderList) -> Self {
-        let holder = ErrorTemplate::new(code, desc);
+        let holder = ErrorTemplate::new(code.clone(), desc);
         let data = TERA.render("error.html", &holder);
 
         match data {
@@ -90,7 +89,7 @@ impl Response {
                 headers.chunked_encoding();
 
                 Self {
-                    code,
+                    code: code.clone(),
                     headers,
                     data:    Some(data.into()),
                 }
@@ -402,7 +401,7 @@ impl Response {
 
             if redir.matches(&temp) {
                 let new_path = redir.subst(&temp);
-                return Response::redirect(&new_path, redir.code);
+                return Response::redirect(&new_path, redir.code.clone());
             }
         }
 
@@ -632,7 +631,7 @@ impl Response {
     where
         T: std::io::Write + Sized,
     {
-        let num = self.code.to_u16().unwrap_or(0);
+        let num = self.code.to_num();
 
         let mut write_buff = Vec::new();
         write!(write_buff, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
@@ -679,7 +678,7 @@ impl Response {
     where
         T: std::io::Write + Sized,
     {
-        let num = self.code.to_u16().unwrap_or(0);
+        let num = self.code.to_num();
 
         let mut write_buff = Vec::new();
         write!(&mut write_buff, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
