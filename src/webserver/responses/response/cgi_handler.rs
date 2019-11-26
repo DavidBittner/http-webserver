@@ -144,13 +144,14 @@ impl<'a> CgiHandler<'a> {
 
                         headers.remove("status");
                         if !headers.has(headers::CONTENT_TYPE) {
-                            return Ok(
-                                Response::error(
-                                    status_c.unwrap_or(StatusCode::InternalServerError),
-                                    "Internal server error.",
-                                    headers
-                                )
-                            )
+                            return Ok(Response {
+                                code: status_c
+                                    .unwrap_or(
+                                        StatusCode::InternalServerError
+                                    ),
+                                data: None,
+                                headers
+                            })
                         }
 
                         headers.merge(HeaderList::response_headers());
