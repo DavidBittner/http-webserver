@@ -186,7 +186,7 @@ impl SocketHandler {
                     conn = req
                         .headers
                         .get(headers::CONNECTION)
-                        .unwrap_or(connection::CLOSE)
+                        .unwrap_or(connection::LONG_LIVED)
                         .into();
                 }
                 Err(_) => {
