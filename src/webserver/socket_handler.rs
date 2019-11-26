@@ -273,7 +273,7 @@ impl SocketHandler {
                 .unwrap_or(0);
 
             let diff = len - self.req_buff.len();
-            if len <= 0 {
+            if diff <= 0 {
                 let payload = self.req_buff.split_off(len);
                 req.set_payload(payload.into_bytes());
             }else{
