@@ -97,10 +97,6 @@ impl AuthHandler {
         use AuthCheckResult::*;
 
         if let Some(ref auth_file) = self.auth_file {
-            if !auth_file.allows.contains(&req.method) {
-                return Ok(MethodNotAllowed);
-            }
-
             let auth_text = req.headers.authorization();
             if auth_text.is_none() {
                 return Ok(Failed);
@@ -112,12 +108,12 @@ impl AuthHandler {
                     .unwrap()
                     .parse()?;
 
-            if !auth_file.allows.contains(&req.method) {
-                return Ok(Failed);
-            }
-
             match auth {
                 SuppliedAuth::Basic { auth } => {
+                    if auth_file.typ != AuthType::Basic {
+                        return Ok(Failed);
+                    }
+
                     let decoded: Vec<u8> =
                         base64::decode(&auth).map_err(|_| {
                             SuppliedAuthError::InvalidBase64(auth.clone())
@@ -138,7 +134,11 @@ impl AuthHandler {
 
                     if let Some(password) = password {
                         if given_password == password {
-                            Ok(Passed)
+                            if !auth_file.allows.contains(&req.method) {
+                                Ok(MethodNotAllowed)
+                            }else{
+                                Ok(Passed)
+                            }
                         }else{
                             Ok(Failed)
                         }
@@ -157,6 +157,10 @@ impl AuthHandler {
                     response,
                     opaque: _opaque,
                 } => {
+                    if auth_file.typ != AuthType::Digest {
+                        return Ok(Failed);
+                    }
+
                     if realm != auth_file.realm {
                         return Ok(Failed);
                     }
@@ -197,7 +201,11 @@ impl AuthHandler {
                     );
 
                     if format!("{:x}", digest) == response {
-                        Ok(Passed)
+                        if !auth_file.allows.contains(&req.method) {
+                            Ok(MethodNotAllowed)
+                        }else{
+                            Ok(Passed)
+                        }
                     }else{
                         Ok(Failed)
                     }
