@@ -272,10 +272,22 @@ impl SocketHandler {
             let len: usize = len.parse()
                 .unwrap_or(0);
 
+            let diff = len - self.req_buff.len();
+            if len <= 0 {
+                let payload = self.req_buff.split_off(len);
+                req.set_payload(payload.into_bytes());
+            }else{
+                let mut buff = vec![0; diff];
+                self.stream.read_exact(&mut buff)?;
+
+                let mut temp: Vec<_> = self.req_buff.split_off(0)
+                    .into_bytes();
+
+                temp.append(&mut buff);
+                req.set_payload(temp);
+            }
             let mut buff = vec![0; len];
             self.stream.read_exact(&mut buff)?;
-            println!("{:#?}", buff);
-
             req.set_payload(buff);
         }
 
