@@ -269,18 +269,18 @@ impl SocketHandler {
 
         let mut req: Request = req_str.parse()?;
         if let Some(len) = req.headers.get(headers::CONTENT_LENGTH) {
-            let len: usize = len.parse()
+            let len: i64 = len.parse()
                 .unwrap_or(0);
             log::debug!("len: '{}'", len);
 
-            let diff = len - self.req_buff.len();
+            let diff = len - self.req_buff.len() as i64;
             log::debug!("diff: '{}'", diff);
             if diff <= 0 {
-                let payload = self.req_buff.split_off(len);
+                let payload = self.req_buff.split_off(len as usize);
                 log::debug!("first: '{}'", payload);
                 req.set_payload(payload.into_bytes());
             }else{
-                let mut buff = vec![0; diff];
+                let mut buff = vec![0; diff as usize];
                 self.stream.read_exact(&mut buff)?;
 
                 let mut temp: Vec<_> = self.req_buff.split_off(0)
@@ -290,7 +290,7 @@ impl SocketHandler {
                 log::debug!("second: '{:#?}'", temp); 
                 req.set_payload(temp);
             }
-            let mut buff = vec![0; len];
+            let mut buff = vec![0; len as usize];
             self.stream.read_exact(&mut buff)?;
             req.set_payload(buff);
         }
