@@ -12,6 +12,7 @@ pub struct Request {
     pub path:    PathBuf,
     pub ver:     String,
     pub headers: HeaderList,
+    pub payload: Option<Vec<u8>>
 }
 
 #[derive(Debug)]
@@ -20,6 +21,12 @@ pub enum RequestParsingError {
     UrlError(ParseError),
     HeaderError(HeaderError),
     FormatError,
+}
+
+impl Request {
+    pub fn set_payload(&mut self, payload: Vec<u8>) {
+        self.payload = Some(payload);
+    }
 }
 
 impl Display for RequestParsingError {
@@ -100,9 +107,10 @@ impl FromStr for Request {
 
         Ok(Request {
             method: method.parse()?,
-            path: url.into(),
-            ver: ver.into(),
+            path:   url.into(),
+            ver:    ver.into(),
             headers,
+            payload: None
         })
     }
 }

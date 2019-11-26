@@ -386,10 +386,20 @@ impl HeaderList {
         self.0.insert(WWW_AUTHENTICATE.into(), val);
     }
 
+    pub fn content_length(&mut self, len: usize) {
+        self.0.insert(CONTENT_LENGTH.into(), len.to_string());
+    }
+
     pub fn get(&self, what: &str) -> Option<&str> {
         match self.0.get(what) {
             Some(val) => Some(val),
             None => None,
+        }
+    }
+
+    pub fn merge(&mut self, oth: Self) {
+        for (key, val) in oth.0.into_iter() {
+            self.0.insert(key, val);
         }
     }
 
@@ -403,7 +413,12 @@ impl HeaderList {
 //I know, this function is hideous.
 fn title_case(s: &str) -> String {
     let mut ret = String::new();
-    ret.push_str(&s.chars().nth(0).unwrap().to_ascii_uppercase().to_string());
+    ret.push_str(&s
+        .chars()
+        .nth(0)
+        .unwrap()
+        .to_ascii_uppercase()
+        .to_string());
 
     for (ind, _) in s.match_indices("-") {
         ret.push_str(&s[ret.len()..=ind]);

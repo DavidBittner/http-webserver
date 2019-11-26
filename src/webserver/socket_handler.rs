@@ -186,8 +186,8 @@ impl SocketHandler {
                     conn = req
                         .headers
                         .get(headers::CONNECTION)
-                        .unwrap_or(connection::LONG_LIVED)
-                        .into()
+                        .unwrap_or(connection::CLOSE)
+                        .into();
                 }
                 Err(_) => {
                     conn = resp
@@ -197,6 +197,9 @@ impl SocketHandler {
                         .into()
                 }
             };
+
+            resp.headers
+                .connection(&conn);
 
             resp.headers.connection(&conn);
             self.write_response(resp)?;
@@ -261,7 +264,18 @@ impl SocketHandler {
             self.addr
         );
 
-        Ok(req_str.parse()?)
+        let mut req: Request = req_str.parse()?;
+        if let Some(len) = req.headers.get(headers::CONTENT_LENGTH) {
+            let len: usize = len.parse()
+                .unwrap_or(0);
+
+            let mut buff = vec![0; len];
+            self.stream.read_exact(&mut buff)?;
+
+            req.set_payload(buff);
+        }
+
+        Ok(req)
     }
 
     fn write_response(&mut self, resp: Response) -> Result<()> {
@@ -309,7 +323,9 @@ impl SocketHandler {
                 if url.clone() == comp {
                     SocketHandler::log_response()
                 }else {
-                    if url.is_executable() {
+                    if     url.is_executable()
+                       && !url.is_dir()
+                    {
                         Response::cgi_response(&url, req)
                     }else{
                         Response::path_response(&url, req)

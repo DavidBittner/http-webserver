@@ -1,8 +1,10 @@
 mod content_negotiator;
 mod templates;
+mod cgi_handler;
 
 use content_negotiator::*;
 use templates::*;
+use cgi_handler::*;
 
 use super::redirect::*;
 use super::status_code::StatusCode;
@@ -52,7 +54,9 @@ impl Into<ResponseData> for Vec<u8> {
 }
 
 impl From<Box<dyn std::io::Read>> for ResponseData {
-    fn from(oth: Box<dyn std::io::Read>) -> Self { ResponseData::Stream(oth) }
+    fn from(oth: Box<dyn std::io::Read>) -> Self {
+        ResponseData::Stream(oth)
+    }
 }
 
 use std::fmt::{Debug, Formatter, Result as fmtResult};
@@ -62,7 +66,7 @@ impl Debug for ResponseData {
 
         match self {
             Buffer(buff) => write!(fmt, "Buffer([{}])", buff.len()),
-            Stream(_) => write!(fmt, "Stream(?)"),
+            Stream(_)    => write!(fmt, "Stream(?)"),
         }
     }
 }
@@ -245,7 +249,7 @@ impl Response {
 
         Self {
             code:    StatusCode::Ok,
-            headers: headers,
+            headers,
             data:    Some(req_data.into()),
         }
     }
@@ -312,9 +316,9 @@ impl Response {
                 }
 
                 Self {
-                    code:    code,
-                    headers: headers,
-                    data:    Some(ResponseData::Stream(Box::new(file))),
+                    code,
+                    headers,
+                    data: Some(ResponseData::Stream(Box::new(file))),
                 }
             }
             Err(err) => {
@@ -384,7 +388,7 @@ impl Response {
 
             Ok(Self {
                 data:    Some(ret_buff.into()),
-                headers: headers,
+                headers,
                 code:    StatusCode::PartialContent,
             })
         }
@@ -532,58 +536,26 @@ impl Response {
     }
 
     pub fn cgi_response(path: &Path, req: &Request) -> Self {
-        use std::process::{
-            Command,
-            Stdio
-        };
-
-        let envs: Vec<(String, String)> = vec![
-            ("SCRIPT_NAME".into(),
-             path
-                .file_stem()
-                .unwrap()
-                .to_string_lossy()
-                .into()
-            ),
-            ("SCRIPT_URI".into(),
-             path
-                .display()
-                .to_string()
-                .into()
-            ),
-            ("SCRIPT_FILENAME".into(),
-             path
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .into()
-            ),
-        ];
-
-        let com = Command::new(path)
-            .envs(envs.into_iter())
-            .stdin(Stdio::null())
-            .output();
-
-        match com {
-            Ok(output) => {
-                let mut headers = HeaderList::response_headers();
-                headers.content("text/plain", None, output.stdout.len());
-
-                Self {
-                    code:    StatusCode::Ok,
-                    headers: HeaderList::response_headers(),
-                    data:    Some(ResponseData::Buffer(output.stdout))
+        let handler = CgiHandler::new(path, req);
+        match handler {
+            Ok(handler) => {
+                match handler.run() {
+                    Ok(resp) => resp,
+                    Err(err) => {
+                        error!(
+                            "error occurred during CGI response: '{}'",
+                            err
+                        );
+                        Response::internal_error()
+                    }
                 }
             },
             Err(err) => {
-                warn!(
-                    "error occurred when executing script: '{}',\
-                    the script is at: '{}'",
-                    err,
-                    path.display()
+                error!(
+                    "error occurred while processing CGI response: '{}'",
+                    err
                 );
-                Self::internal_error()
+                Response::internal_error()
             }
         }
     }
