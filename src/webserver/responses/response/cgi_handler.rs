@@ -1,6 +1,6 @@
 use crate::webserver::requests::Request;
 use crate::webserver::responses::{Response, StatusCode};
-use crate::webserver::shared::HeaderList;
+use crate::webserver::shared::*;
 
 use std::path::{PathBuf, Path};
 use std::io::Write;
@@ -13,8 +13,6 @@ use std::fmt::{
     Formatter,
     Display
 };
-
-use log::*;
 
 pub struct CgiHandler<'a> {
     req: &'a Request,
@@ -124,11 +122,6 @@ impl<'a> CgiHandler<'a> {
 
                 match header_lines.parse::<HeaderList>() {
                     Ok(mut headers) => {
-                        if !headers.has("content-type") {
-                            warn!("script did not return content-type header");
-                            return Ok(Response::internal_error());
-                        }
-
                         let mut status_c: Option<StatusCode> = None;
                         if let Some(status) = headers.get("status") {
                             let (s, e) = status.split_at(status.find(" ")
@@ -150,6 +143,16 @@ impl<'a> CgiHandler<'a> {
                         }
 
                         headers.remove("status");
+                        if !headers.has(headers::CONTENT_TYPE) {
+                            return Ok(
+                                Response::error(
+                                    status_c.unwrap_or(StatusCode::InternalServerError),
+                                    "Internal server error.",
+                                    headers
+                                )
+                            )
+                        }
+
                         headers.merge(HeaderList::response_headers());
                         headers.content_length(buff.len());
                         headers.chunked_encoding();
