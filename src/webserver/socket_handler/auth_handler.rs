@@ -40,6 +40,7 @@ impl AuthHandler {
             loc.parent().unwrap()
         };
 
+        let mut needs_cache = true;
         let auth_file = {
             let cache = AUTH_FILE_CACHE.read().unwrap();
 
@@ -48,23 +49,28 @@ impl AuthHandler {
                     "using cached auth for: '{}'",
                     temp_path.display()
                 );
+                needs_cache = false;
                 Some(Arc::clone(cached))
             } else {
                 log::debug!(
                     "using new auth for: '{}'",
                     temp_path.display()
                 );
-                Self::find_config(temp_path)?.map(|inner| Arc::new(inner))
+
+                Self::find_config(temp_path)?
+                    .map(|inner| Arc::new(inner))
             }
         };
 
         if let Some(auth_file) = &auth_file {
-            let mut cache = AUTH_FILE_CACHE.write().unwrap();
-            log::debug!(
-                "auth file added to cache for path: '{}'",
-                temp_path.display()
-            );
-            cache.insert(temp_path.into(), auth_file.clone());
+            if needs_cache {
+                let mut cache = AUTH_FILE_CACHE.write().unwrap();
+                log::debug!(
+                    "auth file added to cache for path: '{}'",
+                    temp_path.display()
+                );
+                cache.insert(temp_path.into(), auth_file.clone());
+            }
         }
 
         Ok(Self { auth_file })
@@ -172,11 +178,12 @@ impl AuthHandler {
                     };
 
                     let to_hash = format!(
-                        "{a1}:{nonce}:{ncount}:{cnonce}:auth:{a2}",
+                        "{a1}:{nonce}:{ncount}:{cnonce}:{qop}:{a2}",
                         a1 = password,
                         nonce = nonce,
                         ncount = nc,
                         cnonce = cnonce,
+                        qop    = qop,
                         a2 = format!("{:x}", a2)
                     );
 

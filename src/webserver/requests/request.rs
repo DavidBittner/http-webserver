@@ -1,18 +1,37 @@
 use crate::webserver::shared::headers::*;
 use crate::webserver::shared::method::*;
 
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Result as FmtResult, Debug};
 use std::path::PathBuf;
 use std::str::FromStr;
 use url::{ParseError, Url};
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct Request {
     pub method:  Method,
     pub path:    PathBuf,
     pub ver:     String,
     pub headers: HeaderList,
     pub payload: Option<Vec<u8>>
+}
+
+impl Debug for Request {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        let pl = match self.payload {
+            Some(ref p) =>
+                format!("Some({})", p.len()),
+            None =>
+                String::from("None")
+        };
+
+        fmt.debug_struct("Request")
+            .field("method",  &self.method)
+            .field("path",    &self.path.display())
+            .field("ver",     &self.ver)
+            .field("headers", &self.headers)
+            .field("payload", &pl)
+            .finish()
+    }
 }
 
 #[derive(Debug)]

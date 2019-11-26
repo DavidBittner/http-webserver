@@ -124,10 +124,12 @@ impl SocketHandler {
                                             Method::Options => {
                                                 self.options(&req)
                                             },
-                                            Method::Trace =>
+                                            Method::Trace   =>
                                                 self.trace(&req),
-                                            Method::Put   =>
+                                            Method::Put     =>
                                                 self.put(&req),
+                                            Method::Delete  =>
+                                                self.delete(&req),
                                             _ => Response::not_implemented(),
                                         }
                                     }
@@ -531,6 +533,35 @@ impl SocketHandler {
                         err
                     );
                     Response::internal_error()
+                }
+            }
+        }else{
+            Response::forbidden()
+        }
+    }
+
+    fn delete(&mut self, req: &Request) -> Response {
+        let url = SocketHandler::sterilize_path(&req.path);
+        if url.starts_with(&CONFIG.root) {
+            match std::fs::remove_file(&url) {
+                Ok(_) => Response {
+                    code: StatusCode::Ok,
+                    data: None,
+                    headers: HeaderList::response_headers()
+                },
+                Err(err) => {
+                    warn!(
+                        "error occurred during DELETE req at '{}': '{}'",
+                        url.display(),
+                        err
+                    );
+                    use std::io::ErrorKind::*;
+                    match err.kind() {
+                        PermissionDenied =>
+                            Response::forbidden(),
+                        _                =>
+                            Response::internal_error()
+                    }
                 }
             }
         }else{
