@@ -143,6 +143,7 @@ impl<'a> CgiHandler<'a> {
                         }
 
                         headers.remove("status");
+                        headers.merge(HeaderList::response_headers());
                         if !headers.has(headers::CONTENT_TYPE) {
                             return Ok(Response {
                                 code: status_c
@@ -154,7 +155,6 @@ impl<'a> CgiHandler<'a> {
                             })
                         }
 
-                        headers.merge(HeaderList::response_headers());
                         headers.content_length(buff.len());
                         headers.chunked_encoding();
 
