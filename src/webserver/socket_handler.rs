@@ -563,22 +563,33 @@ impl SocketHandler {
                     }
                 },
                 Err(err) => {
-                    warn!(
-                        "error occurred during DELETE req at '{}': '{}'",
-                        url.display(),
-                        err
-                    );
                     use std::io::ErrorKind::*;
                     match err.kind() {
                         PermissionDenied =>
                             Response::forbidden(),
-                        NotFound => Response {
-                            code: StatusCode::NoContent,
-                            data: None,
-                            headers: HeaderList::response_headers()
+                        NotFound => {
+                            let mut headers = HeaderList::response_headers();
+                            let data = format!(
+                                "File '{}' deleted successfully.",
+                                url.display()
+                            );
+
+                            headers.content("text/plain", None, data.len());
+                            trace!("file deleted at '{}'", url.display());
+                            Response {
+                                code: StatusCode::Ok,
+                                data: Some(data.into_bytes().into()),
+                                headers: HeaderList::response_headers()
+                            }
                         },
-                        _                =>
+                        _ => {
+                            warn!(
+                                "error occurred during DELETE req at '{}': '{}'",
+                                url.display(),
+                                err
+                            );
                             Response::internal_error()
+                        }
                     }
                 }
             }
