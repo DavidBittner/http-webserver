@@ -550,7 +550,7 @@ impl SocketHandler {
                 Ok(_) => {
                     trace!("file deleted at '{}'", url.display());
                     Response {
-                        code: StatusCode::Ok,
+                        code: StatusCode::NoContent,
                         data: None,
                         headers: HeaderList::response_headers()
                     }
@@ -566,7 +566,7 @@ impl SocketHandler {
                         PermissionDenied =>
                             Response::forbidden(),
                         NotFound => Response {
-                            code: StatusCode::Ok,
+                            code: StatusCode::NoContent,
                             data: None,
                             headers: HeaderList::response_headers()
                         },

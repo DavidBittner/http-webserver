@@ -2,6 +2,7 @@
 pub enum StatusCode {
     Ok,
     Created,
+    NoContent,
     PartialContent,
     MultipleChoice,
     MovedPermanently,
@@ -28,6 +29,7 @@ impl StatusCode {
         match self {
             Ok                  => 200,
             Created             => 201,
+            NoContent           => 204,
             PartialContent      => 206,
             MultipleChoice      => 300,
             MovedPermanently    => 301,
@@ -55,6 +57,7 @@ impl StatusCode {
         match num {
             200 => Ok,
             201 => Created,
+            204 => NoContent,
             206 => PartialContent,
             300 => MultipleChoice,
             301 => MovedPermanently,
@@ -84,6 +87,7 @@ impl Display for StatusCode {
         let wr = match self {
             Ok                  => "Ok",
             Created             => "Created",
+            NoContent           => "No Content",
             NotFound            => "Not Found",
             Forbidden           => "Forbidden",
             InternalServerError => "Internal Server Error",
