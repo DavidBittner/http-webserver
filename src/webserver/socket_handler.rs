@@ -548,10 +548,17 @@ impl SocketHandler {
         if url.starts_with(&CONFIG.root) {
             match std::fs::remove_file(&url) {
                 Ok(_) => {
+                    let mut headers = HeaderList::response_headers();
+                    let data = format!(
+                        "File '{}' deleted successfully.",
+                        url.display()
+                    );
+
+                    headers.content("text/plain", None, data.len());
                     trace!("file deleted at '{}'", url.display());
                     Response {
-                        code: StatusCode::NoContent,
-                        data: None,
+                        code: StatusCode::Ok,
+                        data: Some(data.into_bytes().into()),
                         headers: HeaderList::response_headers()
                     }
                 },
