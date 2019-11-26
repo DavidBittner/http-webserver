@@ -60,8 +60,6 @@ impl AuthHandler {
                     .collect()
             },
             None => vec![
-                Method::Put,
-                Method::Delete,
                 Method::Post,
                 Method::Options,
                 Method::Trace,

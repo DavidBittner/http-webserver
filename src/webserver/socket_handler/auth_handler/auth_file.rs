@@ -161,7 +161,7 @@ impl FromStr for AuthFile {
                     }
                 } else {
                     match line.to_lowercase().as_str() {
-                        "allow-put" => allows.push(Method::Put),
+                        "allow-put"    => allows.push(Method::Put),
                         "allow-delete" => allows.push(Method::Delete),
                         _ => {
                             return Err(AuthFileParseError::UnrecognizedSymbol(

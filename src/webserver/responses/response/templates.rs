@@ -2,7 +2,6 @@ use crate::webserver::responses::StatusCode;
 
 use chrono::serde::ts_seconds;
 use chrono::{DateTime, Utc};
-use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 

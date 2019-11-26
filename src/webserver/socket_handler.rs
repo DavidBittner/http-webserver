@@ -112,11 +112,14 @@ impl SocketHandler {
                                                 let mut resp = self.get(&req);
                                                 resp.data = None;
                                                 resp
-                                            }
+                                            },
                                             Method::Options => {
                                                 self.options(&req)
-                                            }
-                                            Method::Trace => self.trace(&req),
+                                            },
+                                            Method::Trace =>
+                                                self.trace(&req),
+                                            Method::Put   =>
+                                                self.put(&req),
                                             _ => Response::not_implemented(),
                                         }
                                     }
@@ -271,6 +274,7 @@ impl SocketHandler {
 
             let mut buff = vec![0; len];
             self.stream.read_exact(&mut buff)?;
+            println!("{:#?}", buff);
 
             req.set_payload(buff);
         }
@@ -467,6 +471,51 @@ impl SocketHandler {
         if url.starts_with(&CONFIG.root) {
             Response::options_response(&url)
         } else {
+            Response::forbidden()
+        }
+    }
+
+    fn put(&mut self, req: &Request) -> Response {
+        use std::fs::File;
+        use std::io::Write;
+
+        let url = SocketHandler::sterilize_path(&req.path);
+        if url.starts_with(&CONFIG.root) {
+            let code = if url.exists() {
+                StatusCode::Ok
+            }else{
+                StatusCode::Created
+            };
+
+            match File::create(&url) {
+                Ok(mut file) => {
+                    match req.payload {
+                        Some(ref load) => {
+                            file.write_all(load)
+                                .unwrap();
+
+                            Response {
+                                code,
+                                headers: HeaderList::response_headers(),
+                                data: None
+                            }
+                        },
+                        None       => {
+                            warn!("empty payload on PUT request");
+                            Response::bad_request()
+                        }
+                    }
+                },
+                Err(err) => {
+                    error!(
+                        "failed to create file at '{}': '{}'",
+                        url.display(),
+                        err
+                    );
+                    Response::internal_error()
+                }
+            }
+        }else{
             Response::forbidden()
         }
     }

@@ -1,6 +1,7 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum StatusCode {
     Ok,
+    Created,
     PartialContent,
     MultipleChoice,
     MovedPermanently,
@@ -25,6 +26,7 @@ impl StatusCode {
         use StatusCode::*;
         match self {
             Ok                  => 200,
+            Created             => 201,
             PartialContent      => 206,
             MultipleChoice      => 300,
             MovedPermanently    => 301,
@@ -50,6 +52,7 @@ impl StatusCode {
 
         match num {
             200 => Ok,
+            201 => Created,
             206 => PartialContent,
             300 => MultipleChoice,
             301 => MovedPermanently,
@@ -77,6 +80,7 @@ impl Display for StatusCode {
         use StatusCode::*;
         let wr = match self {
             Ok                  => "Ok",
+            Created             => "Created",
             NotFound            => "Not Found",
             Forbidden           => "Forbidden",
             InternalServerError => "Internal Server Error",
