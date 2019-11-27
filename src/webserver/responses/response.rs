@@ -691,6 +691,10 @@ impl Response {
     where
         T: std::io::Write + Sized,
     {
+        use std::io::BufReader;
+        use std::io::BufRead;
+        use std::io::Read;
+
         let num = self.code.to_num();
 
         let mut write_buff = Vec::new();
@@ -701,24 +705,31 @@ impl Response {
 
         match self.data {
             Some(data) => {
-                let mut reader: Box<dyn std::io::Read> = match data {
-                    ResponseData::Buffer(buff) => Box::new(Cursor::new(buff)),
-                    ResponseData::Stream(stream) => Box::new(stream),
+                let reader: Box<dyn std::io::Read> = match data {
+                    ResponseData::Buffer(buff)   =>
+                        Box::new(Cursor::new(buff)),
+                    ResponseData::Stream(stream) =>
+                        Box::new(stream),
                 };
 
-                write_buff.clear();
-                reader.read_to_end(&mut write_buff)?;
-
-                for chunk in write_buff.chunks(CHUNK_SIZE) {
-                    Self::write_w_timeout(
-                        writer,
-                        &format!("{:x}\r\n", chunk.len()).into_bytes(),
-                    )?;
-                    Self::write_w_timeout(writer, &chunk)?;
-                    Self::write_w_timeout(
-                        writer,
-                        &format!("\r\n").into_bytes(),
-                    )?;
+                let reader   = BufReader::new(reader);
+                let mut buff = String::new();
+                for (ind, line) in reader.lines().enumerate() {
+                    let line = line?;
+                    if ind % 2 == 0 {
+                        buff.push_str(&format!("{}\n", line));
+                    }else{
+                        buff.push_str(&format!("{}\n", line));
+                        Self::write_w_timeout(
+                            writer,
+                            &format!("{:x}\r\n", buff.len()).into_bytes(),
+                        )?;
+                        Self::write_w_timeout(writer, &line.into_bytes())?;
+                        Self::write_w_timeout(
+                            writer,
+                            &format!("\r\n").into_bytes(),
+                        )?;
+                    }
                 }
 
                 Self::write_w_timeout(
