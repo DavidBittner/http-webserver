@@ -208,7 +208,7 @@ impl SocketHandler {
                     conn = resp
                         .headers
                         .get(headers::CONNECTION)
-                        .unwrap_or(connection::CLOSE)
+                        .unwrap_or(connection::LONG_LIVED)
                         .into()
                 }
             };

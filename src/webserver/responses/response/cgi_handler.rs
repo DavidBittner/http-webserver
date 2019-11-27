@@ -156,9 +156,9 @@ impl<'a> CgiHandler<'a> {
 
                         let buff: String = buff.lines()
                             .skip(header_lines.len())
+                            .map(|l| format!("{}\n", l))
                             .collect();
 
-                        headers.content_length(buff.len());
                         if headers.get("location").is_some() {
                             Ok(Response {
                                 code:   status_c.unwrap_or(StatusCode::Found),
