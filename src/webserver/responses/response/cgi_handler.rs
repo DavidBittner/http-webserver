@@ -152,9 +152,7 @@ impl<'a> CgiHandler<'a> {
 
                         headers.remove("status");
                         headers.merge(HeaderList::response_headers());
-
                         headers.content_length(buff.len());
-                        headers.chunked_encoding();
 
                         let buff: String = buff.lines()
                             .skip(header_lines.len())
