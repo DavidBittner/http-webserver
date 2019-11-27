@@ -647,7 +647,7 @@ impl Response {
 
         let mut write_buff = Vec::new();
         write!(write_buff, "{} {} {}\r\n", "HTTP/1.1", num, self.code)?;
-        write!(write_buff, "{}\r\n", self.headers)?;
+        write!(write_buff, "{}\r\n\r\n", self.headers)?;
 
         Self::write_w_timeout(writer, &mut write_buff)?;
 
