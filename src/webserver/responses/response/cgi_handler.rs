@@ -124,11 +124,16 @@ impl<'a> CgiHandler<'a> {
     fn create_response(self) -> Result<Response> {
         match self.buff {
             Some(buff) => {
-                let header_lines: String = buff.lines()
+                let header_lines: Vec<&str> = buff
+                    .lines()
                     .take_while(|l| !l.is_empty())
                     .collect();
 
-                match header_lines.parse::<HeaderList>() {
+                let header_str: String = header_lines.iter()
+                    .map(|l| format!("{}\n", l))
+                    .collect();
+
+                match header_str.parse::<HeaderList>() {
                     Ok(mut headers) => {
                         let mut status_c: Option<StatusCode> = None;
                         if let Some(status) = headers.get("status") {
@@ -154,10 +159,11 @@ impl<'a> CgiHandler<'a> {
                         headers.chunked_encoding();
                         headers.merge(HeaderList::response_headers());
 
-                        let buff: String = buff.lines()
-                            .skip(header_lines.len())
+                        let mut buff: String = buff.lines()
+                            .skip(header_lines.len()+1)
                             .map(|l| format!("{}\n", l))
                             .collect();
+                        buff.remove(buff.len()-1);
 
                         if headers.get("location").is_some() {
                             Ok(Response {
