@@ -17,6 +17,7 @@ use crate::webserver::socket_handler::auth_handler::*;
 use std::io::Result as ioResult;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
+use std::net::SocketAddr;
 
 use log::*;
 use mime::Mime;
@@ -545,8 +546,8 @@ impl Response {
         }
     }
 
-    pub fn cgi_response(path: &Path, req: &Request) -> Self {
-        let handler = CgiHandler::new(path, req);
+    pub fn cgi_response(remote: SocketAddr, path: &Path, req: &Request) -> Self {
+        let handler = CgiHandler::new(remote, path, req);
         match handler {
             Ok(handler) => {
                 match handler.run() {

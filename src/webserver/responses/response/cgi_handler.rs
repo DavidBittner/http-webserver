@@ -1,8 +1,10 @@
 use crate::webserver::requests::Request;
 use crate::webserver::responses::{Response, StatusCode};
 use crate::webserver::shared::*;
+use crate::CONFIG;
 
 use std::path::{PathBuf, Path};
+use std::net::SocketAddr;
 use std::io::Write;
 use std::process::{
     Command,
@@ -76,8 +78,8 @@ impl From<std::string::FromUtf8Error> for CgiHandlerError {
 type Result<T> = std::result::Result<T, CgiHandlerError>;
 
 impl<'a> CgiHandler<'a> {
-    pub fn new(path: &Path, req: &'a Request) -> Result<CgiHandler<'a>> {
-        let envs = Self::generate_env(req);
+    pub fn new(remote: SocketAddr, path: &Path, req: &'a Request) -> Result<CgiHandler<'a>> {
+        let envs = Self::generate_env(remote, req);
 
         log::trace!("running cgi script: '{}'", path.display());
         let mut com = Command::new(path.clone());
@@ -209,7 +211,7 @@ impl<'a> CgiHandler<'a> {
         }
     }
 
-    fn generate_env(req: &'a Request) -> Result<Vec<(String, String)>> {
+    fn generate_env(remote: SocketAddr, req: &Request) -> Result<Vec<(String, String)>> {
         Ok(vec![
             ("SCRIPT_NAME".into(),
              req.path
@@ -231,6 +233,37 @@ impl<'a> CgiHandler<'a> {
                 .to_string_lossy()
                 .into()
             ),
+            ("QUERY_STRING".into(),
+             req.query.clone()
+            ),
+            ("CONTENT_LENGTH".into(),
+             req.headers.get(CONTENT_LENGTH)
+                .unwrap_or("0")
+                .into()
+            ),
+            ("CONTENT_TYPE".into(),
+             req.headers.get(CONTENT_TYPE)
+                .unwrap_or("")
+                .into()
+            ),
+            ("PATH_INFO".into(),
+             req.path.clone().display().to_string()
+            ),
+            ("PATH_TRANSLATED".into(),
+             CONFIG.root.join(&req.path).display().to_string()
+            ),
+            ("REMOTE_ADDR".into(),
+             remote.to_string()
+            ),
+            ("REMOTE_HOST".into(),
+             remote.to_string()
+            ),
+            ("REQUEST_METHOD".into(),
+             req.method.to_string()
+            ),
+            ("SERVER_PROTOCOL".into(),
+             "HTTP/1.1".into()
+            )
         ])
     }
 }

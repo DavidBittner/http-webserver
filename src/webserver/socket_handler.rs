@@ -353,7 +353,7 @@ impl SocketHandler {
                     if     url.is_executable()
                        && !url.is_dir()
                     {
-                        Response::cgi_response(&url, req)
+                        Response::cgi_response(self.addr.clone(), &url, req)
                     }else{
                         Response::path_response(&url, req)
                     }
