@@ -152,12 +152,12 @@ impl<'a> CgiHandler<'a> {
 
                         headers.remove("status");
                         headers.merge(HeaderList::response_headers());
-                        headers.content_length(buff.len());
 
                         let buff: String = buff.lines()
                             .skip(header_lines.len())
                             .collect();
 
+                        headers.content_length(buff.len());
                         if headers.get("location").is_some() {
                             Ok(Response {
                                 code:   status_c.unwrap_or(StatusCode::Found),
