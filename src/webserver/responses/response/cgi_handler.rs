@@ -221,26 +221,19 @@ impl<'a> CgiHandler<'a> {
     }
 
     fn generate_env(remote: SocketAddr, req: &Request) -> Result<Vec<(String, String)>> {
-        let auth = match req.headers.get(AUTHENTICATION_INFO) {
+        let (auth, user) = match req.headers.get(AUTHENTICATION_INFO) {
             Some(auth) => {
                 match auth.parse::<SuppliedAuth>() {
                     Ok(auth) => {
-                        match auth {
-                            SuppliedAuth::Basic{..} => {
-                                String::from("Basic")
-                            },
-                            SuppliedAuth::Digest{..} => {
-                                String::from("Digest")
-                            }
-                        }
+                        auth.get_info()
                     },
                     Err(_) => {
-                        String::new()
+                        (String::new(), String::new())
                     }
                 }
             },
             None => {
-                String::new()
+                (String::new(), String::new())
             }
         };
 
@@ -312,6 +305,9 @@ impl<'a> CgiHandler<'a> {
             ),
             ("SERVER_NAME".into(),
              SERVER_NAME.into()
+            ),
+            ("REMOTE_USER".into(),
+             user
             )
         ])
     }

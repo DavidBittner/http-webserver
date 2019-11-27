@@ -27,6 +27,31 @@ pub enum SuppliedAuthError {
     InvalidBase64(String),
 }
 
+impl SuppliedAuth {
+    pub fn get_info(&self) -> (String, String) {
+        match self {
+            SuppliedAuth::Basic{auth} => {
+                let decoded: Vec<u8> = base64::decode(&auth)
+                    .unwrap();
+                let decoded = String::from_utf8(decoded)
+                    .unwrap();
+                let username = &decoded[0..decoded.find(":").unwrap_or(0)];
+
+                (
+                    String::from("Basic"),
+                    String::from(username)
+                )
+            },
+            SuppliedAuth::Digest{username: user, ..} => {
+                (
+                    "Digest".into(),
+                    user.to_owned()
+                )
+            }
+        }
+    }
+}
+
 fn get_or_error(
     map: &mut HashMap<String, &str>,
     field: &str,
