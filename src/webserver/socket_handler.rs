@@ -1,9 +1,9 @@
 pub mod auth_handler;
+pub use auth_handler::*;
 pub mod etag;
 
 use is_executable::IsExecutable;
 
-use self::auth_handler::*;
 use super::requests::*;
 use super::responses::*;
 use super::shared::headers::*;

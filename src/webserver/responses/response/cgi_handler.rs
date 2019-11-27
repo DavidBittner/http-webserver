@@ -1,7 +1,9 @@
 use crate::webserver::requests::Request;
 use crate::webserver::responses::{Response, StatusCode};
 use crate::webserver::shared::*;
+use crate::webserver::socket_handler::SuppliedAuth;
 use crate::CONFIG;
+use super::super::{SERVER_NAME, SERVER_VERS};
 
 use std::path::{PathBuf, Path};
 use std::net::SocketAddr;
@@ -212,6 +214,29 @@ impl<'a> CgiHandler<'a> {
     }
 
     fn generate_env(remote: SocketAddr, req: &Request) -> Result<Vec<(String, String)>> {
+        let auth = match req.headers.get(AUTHENTICATION_INFO) {
+            Some(auth) => {
+                match auth.parse::<SuppliedAuth>() {
+                    Ok(auth) => {
+                        match auth {
+                            SuppliedAuth::Basic{..} => {
+                                String::from("Basic")
+                            },
+                            SuppliedAuth::Digest{..} => {
+                                String::from("Digest")
+                            }
+                        }
+                    },
+                    Err(_) => {
+                        String::new()
+                    }
+                }
+            },
+            None => {
+                String::new()
+            }
+        };
+
         Ok(vec![
             ("SCRIPT_NAME".into(),
              req.path
@@ -263,6 +288,23 @@ impl<'a> CgiHandler<'a> {
             ),
             ("SERVER_PROTOCOL".into(),
              "HTTP/1.1".into()
+            ),
+            ("HTTP_USER_AGENT".into(),
+             req.headers.get(USER_AGENT)
+                .unwrap_or("")
+                .to_owned()
+            ),
+            ("AUTH_TYPE".into(),
+             auth
+            ),
+            ("SERVER_PORT".into(),
+             CONFIG.port.to_string()
+            ),
+            ("SERVER_SOFTWARE".into(),
+             format!("{}-{}", SERVER_NAME, SERVER_VERS)
+            ),
+            ("SERVER_NAME".into(),
+             SERVER_NAME.into()
             )
         ])
     }

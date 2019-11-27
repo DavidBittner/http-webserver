@@ -1,11 +1,10 @@
 mod auth_file;
-mod supplied_auth;
-
 use auth_file::*;
-use supplied_auth::*;
+
+pub(in crate) mod supplied_auth;
+pub use supplied_auth::*;
 
 use std::path::Path;
-
 use crate::webserver::requests::*;
 use crate::webserver::responses::*;
 use crate::webserver::shared::*;
