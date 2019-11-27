@@ -715,9 +715,9 @@ impl Response {
                 for (ind, line) in reader.lines().enumerate() {
                     let line = line?;
                     if ind % 2 == 0 {
-                        buff.push_str(&format!("{}\n", line));
+                        buff.push_str(&format!("{}\r\n", line));
                     }else{
-                        buff.push_str(&format!("{}\n", line));
+                        buff.push_str(&format!("{}\r\n", line));
                         Self::write_w_timeout(
                             writer,
                             &format!("{:x}\r\n", buff.len()).into_bytes(),
