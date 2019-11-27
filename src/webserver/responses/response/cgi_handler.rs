@@ -169,8 +169,15 @@ impl<'a> CgiHandler<'a> {
                             .collect();
 
                         if headers.get("location").is_some() {
+                            let code = status_c
+                                .unwrap_or(
+                                    match self.req.method {
+                                        Method::Post => StatusCode::Created,
+                                        _            => StatusCode::Found
+                                    }
+                                );
                             Ok(Response {
-                                code:   status_c.unwrap_or(StatusCode::Found),
+                                code,
                                 data:   Some(buff.into_bytes().into()),
                                 headers
                             })

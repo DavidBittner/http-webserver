@@ -132,7 +132,8 @@ impl SocketHandler {
                                                 self.put(&req),
                                             Method::Delete  =>
                                                 self.delete(&req),
-                                            _ => Response::not_implemented(),
+                                            Method::Post    =>
+                                                self.post(&req)
                                         }
                                     }
                                 }
@@ -358,6 +359,22 @@ impl SocketHandler {
                         Response::path_response(&url, req)
                     }
                 }
+            }
+        } else {
+            Response::forbidden()
+        }
+    }
+
+    fn post(&mut self, req: &Request) -> Response {
+        let url = SocketHandler::sterilize_path(&req.path);
+
+        if url.starts_with(&CONFIG.root) {
+            if     url.is_executable()
+               && !url.is_dir()
+            {
+                Response::cgi_response(self.addr.clone(), &url, req)
+            }else{
+                Response::bad_request()
             }
         } else {
             Response::forbidden()
