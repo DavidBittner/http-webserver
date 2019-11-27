@@ -235,7 +235,7 @@ impl SocketHandler {
         let mut start = Instant::now();
 
         let mut in_buff = vec![0; 2048];
-        while !self.req_buff.contains("\r\n\r\n") ||
+        while !self.req_buff.contains("\r\n\r\n") &&
               !self.req_buff.contains("\n\n")
         {
             //Check for timeouts
