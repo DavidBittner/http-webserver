@@ -42,8 +42,6 @@ lazy_static::lazy_static! {
 pub static SERVER_NAME: &'static str = "Ruserv";
 pub static SERVER_VERS: &'static str = env!("CARGO_PKG_VERSION");
 
-pub static CHUNK_SIZE: usize = 2048;
-
 pub enum ResponseData {
     Buffer(Vec<u8>),
     Stream(Box<dyn std::io::Read>),
@@ -693,7 +691,6 @@ impl Response {
     {
         use std::io::BufReader;
         use std::io::BufRead;
-        use std::io::Read;
 
         let num = self.code.to_num();
 
@@ -724,12 +721,26 @@ impl Response {
                             writer,
                             &format!("{:x}\r\n", buff.len()).into_bytes(),
                         )?;
-                        Self::write_w_timeout(writer, &line.into_bytes())?;
+                        Self::write_w_timeout(writer, buff.as_bytes())?;
                         Self::write_w_timeout(
                             writer,
                             &format!("\r\n").into_bytes(),
                         )?;
+
+                        buff.clear();
                     }
+                }
+
+                if !buff.is_empty() {
+                    Self::write_w_timeout(
+                        writer,
+                        &format!("{:x}\r\n", buff.len()).into_bytes(),
+                    )?;
+                    Self::write_w_timeout(writer, &buff.into_bytes())?;
+                    Self::write_w_timeout(
+                        writer,
+                        &format!("\r\n").into_bytes(),
+                    )?;
                 }
 
                 Self::write_w_timeout(
