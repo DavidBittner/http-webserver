@@ -167,14 +167,14 @@ impl<'a> CgiHandler<'a> {
                                 headers
                             })
                         }else if !headers.has(headers::CONTENT_TYPE) {
-                            return Ok(Response {
+                            Ok(Response {
                                 code: status_c
                                     .unwrap_or(
                                         StatusCode::InternalServerError
                                     ),
                                 data: None,
                                 headers
-                            });
+                            })
                         }else{
                             Ok(Response {
                                 code:   status_c.unwrap_or(StatusCode::Ok),
