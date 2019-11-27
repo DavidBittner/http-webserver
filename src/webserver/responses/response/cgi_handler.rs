@@ -79,6 +79,7 @@ impl<'a> CgiHandler<'a> {
     pub fn new(path: &Path, req: &'a Request) -> Result<CgiHandler<'a>> {
         let envs = Self::generate_env(req);
 
+        log::trace!("running cgi script: '{}'", path.display());
         let mut com = Command::new(path.clone());
         com
             .envs((envs?).into_iter())
@@ -108,6 +109,13 @@ impl<'a> CgiHandler<'a> {
 
             let out = child.wait_with_output()?;
             self.buff = Some(String::from_utf8(out.stdout)?);
+            if let Some(ref buff) = self.buff {
+                log::trace!(
+                    "script completed with output:\
+                    \n```\n{:#?}\n```",
+                    buff
+                );
+            }
         }
 
         Ok(self.create_response()?)

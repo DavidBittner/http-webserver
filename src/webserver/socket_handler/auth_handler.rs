@@ -4,21 +4,12 @@ mod supplied_auth;
 use auth_file::*;
 use supplied_auth::*;
 
-use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
-use std::sync::RwLock;
 
 use crate::webserver::requests::*;
 use crate::webserver::responses::*;
 use crate::webserver::shared::*;
 use crate::CONFIG;
-
-type LockType = RwLock<HashMap<Box<Path>, Arc<AuthFile>>>;
-lazy_static::lazy_static! {
-    static ref AUTH_FILE_CACHE: LockType =
-        Default::default();
-}
 
 #[derive(Debug, PartialEq)]
 pub enum AuthCheckResult {
@@ -29,7 +20,7 @@ pub enum AuthCheckResult {
 
 #[derive(Debug)]
 pub struct AuthHandler {
-    auth_file: Option<Arc<AuthFile>>,
+    auth_file: Option<AuthFile>,
 }
 
 impl AuthHandler {
@@ -40,38 +31,10 @@ impl AuthHandler {
             loc.parent().unwrap()
         };
 
-        let mut needs_cache = true;
         let auth_file = {
-            let cache = AUTH_FILE_CACHE.read().unwrap();
-
-            if let Some(cached) = cache.get(temp_path) {
-                log::debug!(
-                    "using cached auth for: '{}'",
-                    temp_path.display()
-                );
-                needs_cache = false;
-                Some(Arc::clone(cached))
-            } else {
-                log::debug!(
-                    "using new auth for: '{}'",
-                    temp_path.display()
-                );
-
-                Self::find_config(temp_path)?
-                    .map(|inner| Arc::new(inner))
-            }
+            Self::find_config(temp_path)?
+                .map(|inner| inner)
         };
-
-        if let Some(auth_file) = &auth_file {
-            if needs_cache {
-                let mut cache = AUTH_FILE_CACHE.write().unwrap();
-                log::debug!(
-                    "auth file added to cache for path: '{}'",
-                    temp_path.display()
-                );
-                cache.insert(temp_path.into(), auth_file.clone());
-            }
-        }
 
         Ok(Self { auth_file })
     }
