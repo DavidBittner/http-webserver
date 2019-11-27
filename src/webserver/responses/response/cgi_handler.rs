@@ -151,6 +151,7 @@ impl<'a> CgiHandler<'a> {
                         }
 
                         headers.remove("status");
+                        headers.chunked_encoding();
                         headers.merge(HeaderList::response_headers());
 
                         let buff: String = buff.lines()
