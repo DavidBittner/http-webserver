@@ -151,12 +151,18 @@ impl FromStr for Request {
 
 impl Display for Request {
     fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
+        let temp = if self.query.is_empty() {
+            self.query.clone()
+        }else{
+            format!("?{}", self.query)
+        };
+
         write!(
             fmt,
-            "{} {}?{} {}\r\n",
+            "{} {}{} {}\r\n",
             self.method,
             self.path.display(),
-            self.query,
+            temp,
             self.ver
         )?;
 
