@@ -112,7 +112,7 @@ impl<'a> CgiHandler<'a> {
             if let Some(ref buff) = self.buff {
                 log::trace!(
                     "script completed with output:\
-                    \n```\n{:#?}\n```",
+                    \n```\n{}\n```",
                     buff
                 );
             }
@@ -152,16 +152,6 @@ impl<'a> CgiHandler<'a> {
 
                         headers.remove("status");
                         headers.merge(HeaderList::response_headers());
-                        if !headers.has(headers::CONTENT_TYPE) {
-                            return Ok(Response {
-                                code: status_c
-                                    .unwrap_or(
-                                        StatusCode::InternalServerError
-                                    ),
-                                data: None,
-                                headers
-                            })
-                        }
 
                         headers.content_length(buff.len());
                         headers.chunked_encoding();
@@ -176,6 +166,15 @@ impl<'a> CgiHandler<'a> {
                                 data:   Some(buff.into_bytes().into()),
                                 headers
                             })
+                        }else if !headers.has(headers::CONTENT_TYPE) {
+                            return Ok(Response {
+                                code: status_c
+                                    .unwrap_or(
+                                        StatusCode::InternalServerError
+                                    ),
+                                data: None,
+                                headers
+                            });
                         }else{
                             Ok(Response {
                                 code:   status_c.unwrap_or(StatusCode::Ok),
@@ -189,16 +188,18 @@ impl<'a> CgiHandler<'a> {
                             "values matching headers found, but failed to parse: '{:#?}'",
                             err
                         );
-
                         Ok(Response::internal_error())
                     }
                 }
             },
             None => {
+                let mut headers = HeaderList::response_headers();
+                headers.content("plain/text", None, 0);
+
                 Ok(Response {
                     code:    StatusCode::Ok,
                     data:    None,
-                    headers: HeaderList::response_headers()
+                    headers
                 })
             }
         }
