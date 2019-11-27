@@ -163,7 +163,6 @@ impl<'a> CgiHandler<'a> {
                             .skip(header_lines.len()+1)
                             .map(|l| format!("{}\n", l))
                             .collect();
-                        buff.remove(buff.len()-1);
 
                         if headers.get("location").is_some() {
                             Ok(Response {
