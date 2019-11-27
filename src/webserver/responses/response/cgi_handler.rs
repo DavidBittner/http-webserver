@@ -159,7 +159,7 @@ impl<'a> CgiHandler<'a> {
                         headers.chunked_encoding();
                         headers.merge(HeaderList::response_headers());
 
-                        let mut buff: String = buff.lines()
+                        let buff: String = buff.lines()
                             .skip(header_lines.len()+1)
                             .map(|l| format!("{}\n", l))
                             .collect();

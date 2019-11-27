@@ -10,6 +10,7 @@ use url::{ParseError, Url};
 pub struct Request {
     pub method:  Method,
     pub path:    PathBuf,
+    pub query:   String,
     pub ver:     String,
     pub headers: HeaderList,
     pub payload: Option<Vec<u8>>
@@ -83,9 +84,13 @@ impl FromStr for Request {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use RequestParsingError::*;
 
-        let mut lines: Vec<&str> = s.lines().collect();
-
-        let verbs: Vec<&str> = lines.remove(0).split_whitespace().collect();
+        let mut lines: Vec<&str> = s
+            .lines()
+            .collect();
+        let     verbs: Vec<&str> = lines
+            .remove(0)
+            .split_whitespace()
+            .collect();
 
         if verbs.len() != 3 {
             return Err(FormatError);
@@ -100,33 +105,43 @@ impl FromStr for Request {
         }
 
         let method = verbs[0];
-        let url = verbs[1];
-        let ver = verbs[2];
+        let url    = verbs[1];
+        let ver    = verbs[2];
 
         let headers: HeaderList = header_block.parse()?;
-
-        let url = if url != "*" {
-            let url = urlencoding::decode(url).map_err(|_| FormatError)?;
+        let (url, query) = if url != "*" {
+            let url = urlencoding::decode(url)
+                .map_err(|_| FormatError)?;
 
             match headers.get(HOST) {
                 Some(host) => {
                     let base = format!("http://{}/", host);
 
-                    Url::options()
+                    let temp = Url::options()
                         .base_url(Some(&Url::parse(&base)?))
-                        .parse(&url)?
-                        .path()
-                        .to_owned()
+                        .parse(&url)?;
+
+                    (
+                        temp.path().to_owned(),
+                        temp.query().unwrap_or("").to_owned()
+                    )
                 }
-                None => Url::parse(&url)?.path().to_owned(),
+                None => {
+                    let temp = Url::parse(&url)?;
+                    (
+                        temp.path().to_owned(),
+                        temp.query().unwrap_or("").to_owned()
+                    )
+                }
             }
         } else {
-            url.to_owned()
+            (url.to_owned(), String::new())
         };
 
         Ok(Request {
             method: method.parse()?,
             path:   url.into(),
+            query:  query.into(),
             ver:    ver.into(),
             headers,
             payload: None
@@ -138,9 +153,10 @@ impl Display for Request {
     fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
         write!(
             fmt,
-            "{} {} {}\r\n",
+            "{} {}?{} {}\r\n",
             self.method,
             self.path.display(),
+            self.query,
             self.ver
         )?;
 
