@@ -82,6 +82,7 @@ impl SocketHandler {
 
     pub fn dispatch(mut self) -> Result<()> {
         loop {
+            log::trace!("waiting for request...");
             let req = self.read_request();
 
             let mut passed_auth = None;
