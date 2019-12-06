@@ -34,7 +34,7 @@ lazy_static::lazy_static! {
 pub struct SocketHandler {
     stream:   TcpStream,
     addr:     SocketAddr,
-    req_buff: String,
+    req_buff: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -76,7 +76,7 @@ impl SocketHandler {
         Ok(SocketHandler {
             addr:     stream.peer_addr()?,
             stream,
-            req_buff: String::new(),
+            req_buff: Vec::new(),
         })
     }
 
@@ -233,13 +233,25 @@ impl SocketHandler {
         Ok(())
     }
 
+    fn contains_slice(sl: &[u8], cn: &[u8]) -> bool {
+        sl.windows(cn.len())
+            .any(|sub| sub == cn)
+    }
+
+    fn find_in_slice(sl: &[u8], fin: &[u8]) -> Option<usize> {
+        sl.windows(fin.len())
+            .enumerate()
+            .find(|(_, val)| *val == fin)
+            .map(|(loc, _)| loc)
+    }
+
     fn read_request(&mut self) -> Result<Request> {
         use std::time::Instant;
         let mut start = Instant::now();
 
         let mut in_buff = vec![0; 2048];
-        while !self.req_buff.contains("\r\n\r\n") &&
-              !self.req_buff.contains("\n\n")
+        while !Self::contains_slice(&self.req_buff, &[13u8,10u8,13u8,10u8]) &&
+              !Self::contains_slice(&self.req_buff, &[10u8, 10u8])
         {
             //Check for timeouts
             if Instant::now() - start >= CONFIG.read_timeout {
@@ -251,9 +263,7 @@ impl SocketHandler {
                 Ok(siz) => {
                     if siz != 0 {
                         let dat = &in_buff[0..siz];
-                        let dat: String = String::from_utf8_lossy(&dat).into();
-
-                        self.req_buff.push_str(&dat);
+                        self.req_buff.extend_from_slice(dat);
                         start = Instant::now();
                     } else {
                         use std::net::Shutdown;
@@ -273,13 +283,19 @@ impl SocketHandler {
 
         //Can unwrap due to the fact it will only get here if
         //we know the buffer contains the marker.
-        let pos = self.req_buff.find("\r\n\r\n")
-            .or(self.req_buff.find("\n\n"))
-            .ok_or(SocketError::NoTerminator)?;
+        let pos = 
+            Self::find_in_slice(&self.req_buff, &[13u8,10u8,13u8,10u8])
+                .or(Self::find_in_slice(&self.req_buff, &[10u8, 10u8]))
+                .ok_or(SocketError::NoTerminator)?;
 
+        debug!("separator found at: {}", pos);
         //Add four to the pos because we want to keep the ending chars
         let mut req_str = self.req_buff.split_off(pos + 4);
         std::mem::swap(&mut req_str, &mut self.req_buff);
+        let req_str = String::from_utf8(req_str)
+            .expect("should be valid UTF-8");
+
+        trace!("sent request string was: \n```\n{}```", req_str);
 
         trace!(
             "request of size '{}' received from '{}'",
@@ -287,10 +303,6 @@ impl SocketHandler {
             self.addr
         );
 
-        debug!(
-            "parsing requesting str: \n```\n{:#?}```",
-            req_str
-        );
         let mut req: Request = req_str.parse()?;
         if let Some(len) = req.headers.get(headers::CONTENT_LENGTH) {
             let len: i64 = len.trim()
@@ -299,15 +311,14 @@ impl SocketHandler {
 
             let diff = len - self.req_buff.len() as i64;
             if diff <= 0 {
-                let mut payload = self.req_buff.split_off(len as usize);
+                let mut payload = self.req_buff.split_off((len - 1) as usize);
                 std::mem::swap(&mut payload, &mut self.req_buff);
-                req.set_payload(payload.into_bytes());
+                req.set_payload(payload);
             }else{
                 let mut buff = vec![0; diff as usize];
                 self.stream.read_exact(&mut buff)?;
 
-                let mut temp: Vec<_> = self.req_buff.split_off(0)
-                    .into_bytes();
+                let mut temp: Vec<_> = self.req_buff.split_off(0);
 
                 temp.append(&mut buff);
                 req.set_payload(temp);
