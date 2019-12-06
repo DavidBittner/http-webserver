@@ -41,6 +41,7 @@ pub struct SocketHandler {
 pub enum SocketError {
     IoError(std::io::Error),
     RequestError(RequestParsingError),
+    NoTerminator,
     ConnectionClosed,
 }
 
@@ -51,6 +52,7 @@ impl Display for SocketError {
         match self {
             IoError(err) => write!(f, "IoError: {}", err),
             RequestError(err) => write!(f, "{}", err),
+            NoTerminator      => write!(f, "no terminator found at the end of the request"),
             ConnectionClosed => write!(f, "connection closed by user"),
         }
     }
@@ -270,7 +272,8 @@ impl SocketHandler {
 
         //Can unwrap due to the fact it will only get here if
         //we know the buffer contains the marker.
-        let pos = self.req_buff.find("\r\n\r\n").unwrap();
+        let pos = self.req_buff.find("\r\n\r\n")
+            .ok_or(SocketError::NoTerminator)?;
 
         //Add four to the pos because we want to keep the ending chars
         let mut req_str = self.req_buff.split_off(pos + 4);
@@ -350,8 +353,8 @@ impl SocketHandler {
                 .or(SocketHandler::check_unmodified_since(req, &url))
                 .or(SocketHandler::check_if_none_match(req, &url));
 
-            if not_mod.is_some() {
-                not_mod.unwrap()
+            if let Some(not_mod) = not_mod {
+                not_mod
             }else {
                 let comp =
                     CONFIG.root.join(PathBuf::from(".well-known/access.log"));
@@ -538,14 +541,29 @@ impl SocketHandler {
                 Ok(mut file) => {
                     match req.payload {
                         Some(ref load) => {
-                            file.write_all(load)
-                                .unwrap();
+                            match file.write_all(load) {
+                                Ok(_) =>
+                                    Response {
+                                        code,
+                                        headers: HeaderList::response_headers(),
+                                        data: None
+                                    },
+                                Err(err) => {
+                                    use std::io::ErrorKind::*;
+                                    warn!(
+                                        "could not write file in PUT: '{}'", 
+                                        err
+                                    );
 
-                            Response {
-                                code,
-                                headers: HeaderList::response_headers(),
-                                data: None
+                                    match err.kind() {
+                                        PermissionDenied =>
+                                            Response::forbidden(),
+                                        _ => 
+                                            Response::internal_error()
+                                    }
+                                }
                             }
+
                         },
                         None       => {
                             warn!("empty payload on PUT request");
