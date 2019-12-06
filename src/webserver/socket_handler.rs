@@ -274,6 +274,7 @@ impl SocketHandler {
         //Can unwrap due to the fact it will only get here if
         //we know the buffer contains the marker.
         let pos = self.req_buff.find("\r\n\r\n")
+            .or(self.req_buff.find("\n\n"))
             .ok_or(SocketError::NoTerminator)?;
 
         //Add four to the pos because we want to keep the ending chars
