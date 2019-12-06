@@ -209,7 +209,7 @@ impl<'a> CgiHandler<'a> {
             },
             None => {
                 let mut headers = HeaderList::response_headers();
-                headers.content("plain/text", None, 0);
+                headers.chunked_encoding();
 
                 Ok(Response {
                     code:    StatusCode::Ok,

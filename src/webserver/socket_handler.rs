@@ -282,9 +282,14 @@ impl SocketHandler {
             self.addr
         );
 
+        debug!(
+            "parsing requesting str: \n```\n{:#?}```",
+            req_str
+        );
         let mut req: Request = req_str.parse()?;
         if let Some(len) = req.headers.get(headers::CONTENT_LENGTH) {
-            let len: i64 = len.parse()
+            let len: i64 = len.trim()
+                .parse()
                 .unwrap_or(0);
 
             let diff = len - self.req_buff.len() as i64;

@@ -39,8 +39,9 @@ impl Debug for Request {
 pub enum RequestParsingError {
     MethodError(UnknownMethodError),
     UrlError(ParseError),
+    UrlEncodingError(urlencoding::FromUrlEncodingError),
     HeaderError(HeaderError),
-    FormatError,
+    FormatError(String),
 }
 
 impl Request {
@@ -57,7 +58,8 @@ impl Display for RequestParsingError {
             MethodError(err) => write!(f, "error with method: '{}'", err),
             HeaderError(err) => write!(f, "error with header: '{}'", err),
             UrlError(err) => write!(f, "error with url: '{}'", err),
-            FormatError => write!(f, "could not understand the given request"),
+            UrlEncodingError(err) => write!(f, "error reading URL encoding: '{:#?}'", err),
+            FormatError(s) => write!(f, "could not understand the given request: '{}'", s),
         }
     }
 }
@@ -93,7 +95,7 @@ impl FromStr for Request {
             .collect();
 
         if verbs.len() != 3 {
-            return Err(FormatError);
+            return Err(FormatError(format!("expected 3 elements, got: '{}'", verbs.len())));
         }
 
         let mut header_block = String::new();
@@ -111,7 +113,7 @@ impl FromStr for Request {
         let headers: HeaderList = header_block.parse()?;
         let (url, query) = if url != "*" {
             let url = urlencoding::decode(url)
-                .map_err(|_| FormatError)?;
+                .map_err(|err| UrlEncodingError(err))?;
 
             match headers.get(HOST) {
                 Some(host) => {
